@@ -1,4 +1,4 @@
-import { Video, Camera, Mic, Music, Layout, Download, Play, Plus, Image as ImageIcon, Sparkles, Filter, CheckCircle2, Loader2, Send, RefreshCw, Layers, Edit3, Trash2, Globe, Settings as SettingsIcon, X, Check, Zap } from 'lucide-react';
+import { Video, Camera, Mic, Music, Layout, Download, Play, Plus, Image as ImageIcon, Sparkles, Filter, CheckCircle2, Loader2, Send, RefreshCw, Layers, Edit3, Trash2, Globe, Settings as SettingsIcon, X, Check, Zap, Shield } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { Listing, VideoProject } from '../../types';
@@ -10,6 +10,8 @@ export default function MediaProductionPage() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStep, setGenerationStep] = useState<string>('');
+  const [activeAgent, setActiveAgent] = useState<string>('Orchestrator');
+  const [judgeStatus, setJudgeStatus] = useState<'IDLE' | 'VALIDATING' | 'APPROVED' | 'REJECTED'>('IDLE');
   const [editingProject, setEditingProject] = useState<VideoProject | null>(null);
   const [isSyncing, setIsSyncing] = useState<string | null>(null);
   const [projects, setProjects] = useState<VideoProject[]>([
@@ -107,13 +109,14 @@ export default function MediaProductionPage() {
     if (!selectedProperty) return;
     setIsGenerating(true);
     setGenerationProgress(0);
+    setJudgeStatus('IDLE');
     
     const steps = [
-      { msg: 'Analyzing Property Metadata...', progress: 15 },
-      { msg: `Initializing ${settings.engine} Engine...`, progress: 30 },
-      { msg: `Optimizing ${settings.motion} Camera Paths...`, progress: 50 },
-      { msg: `Applying ${settings.stagingStyle} Staging...`, progress: 75 },
-      { msg: 'Acoustic Synthesis & Exporting...', progress: 95 }
+      { msg: 'MLS Data Agent: Fetching Listing Record...', progress: 15, agent: 'MLS Data Agent' },
+      { msg: `AI Integration: Initialising ${settings.engine} Pipeline...`, progress: 30, agent: 'AI Integration Agent' },
+      { msg: 'CRM Builder: Constructing Neural Framing...', progress: 50, agent: 'CRM Builder Agent' },
+      { msg: 'Marketing Agent: Applying Segmentation Filters...', progress: 70, agent: 'Marketing Agent' },
+      { msg: 'Judge Agent: Final Security & Schema Audit...', progress: 90, agent: 'Judge Agent' }
     ];
 
     let currentStep = 0;
@@ -121,21 +124,30 @@ export default function MediaProductionPage() {
       if (currentStep < steps.length) {
         setGenerationStep(steps[currentStep].msg);
         setGenerationProgress(steps[currentStep].progress);
+        setActiveAgent(steps[currentStep].agent);
+        
+        if (steps[currentStep].agent === 'Judge Agent') {
+          setJudgeStatus('VALIDATING');
+        }
+        
         currentStep++;
       } else {
         clearInterval(interval);
-        const newProject: VideoProject = {
-          id: Math.random().toString(36).substr(2, 9),
-          propertyId: selectedProperty.id,
-          propertyName: selectedProperty.address,
-          status: 'completed',
-          formats: ['16:9', '9:16'],
-          aiSettings: { ...settings },
-          createdAt: new Date().toISOString().split('T')[0]
-        };
-        setProjects([newProject, ...projects]);
-        setIsGenerating(false);
-        setActiveTab('projects');
+        setJudgeStatus('APPROVED');
+        setTimeout(() => {
+          const newProject: VideoProject = {
+            id: Math.random().toString(36).substr(2, 9),
+            propertyId: selectedProperty.id,
+            propertyName: selectedProperty.address,
+            status: 'completed',
+            formats: ['16:9', '9:16'],
+            aiSettings: { ...settings },
+            createdAt: new Date().toISOString().split('T')[0]
+          };
+          setProjects([newProject, ...projects]);
+          setIsGenerating(false);
+          setActiveTab('projects');
+        }, 800);
       }
     }, 1200);
   };
@@ -150,7 +162,7 @@ export default function MediaProductionPage() {
           </h2>
           <p className="text-xs text-slate-light font-bold uppercase tracking-widest italic">Professional Property Tours & Virtual Staging</p>
         </div>
-        <div className="flex bg-navy p-1 rounded-lg border border-white/5">
+        <div className="flex bg-navy p-1 rounded-lg border border-white/5 relative group">
            <button 
              onClick={() => setActiveTab('create')}
              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all ${activeTab === 'create' ? 'bg-gold text-navy' : 'text-slate hover:text-white'}`}
@@ -163,6 +175,9 @@ export default function MediaProductionPage() {
            >
              Project Library
            </button>
+           <div className="absolute top-full mt-2 right-0 w-48 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light text-right">
+              <span className="text-gold font-bold uppercase block mb-1">Orchestrator Agent:</span> Manages transaction pipeline & document milestones.
+           </div>
         </div>
       </div>
 
@@ -173,21 +188,30 @@ export default function MediaProductionPage() {
            </span>
            <button 
              onClick={() => applyPreset('cinematic')}
-             className="px-3 py-1.5 rounded-lg border border-gold/20 hover:border-gold/50 transition-all text-[9px] font-bold text-cream uppercase bg-navy/40"
+             className="group relative px-3 py-1.5 rounded-lg border border-gold/20 hover:border-gold/50 transition-all text-[9px] font-bold text-cream uppercase bg-navy/40"
            >
              60s Cinematic Tour
+             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light leading-snug normal-case font-normal text-center">
+                <span className="text-blue-400 font-bold uppercase tracking-widest">MLS Data Agent:</span> Load listing record & linked contacts.
+             </div>
            </button>
            <button 
              onClick={() => applyPreset('reels')}
-             className="px-3 py-1.5 rounded-lg border border-gold/20 hover:border-gold/50 transition-all text-[9px] font-bold text-cream uppercase bg-navy/40"
+             className="group relative px-3 py-1.5 rounded-lg border border-gold/20 hover:border-gold/50 transition-all text-[9px] font-bold text-cream uppercase bg-navy/40"
            >
              High-Energy Reel
+             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light leading-snug normal-case font-normal text-center">
+                <span className="text-purple-400 font-bold uppercase tracking-widest">Lead Intelligence Agent:</span> Social hook + 3 bullets.
+             </div>
            </button>
            <button 
              onClick={() => applyPreset('lux')}
-             className="px-3 py-1.5 rounded-lg border border-gold/20 hover:border-gold/50 transition-all text-[9px] font-bold text-cream uppercase bg-navy/40"
+             className="group relative px-3 py-1.5 rounded-lg border border-gold/20 hover:border-gold/50 transition-all text-[9px] font-bold text-cream uppercase bg-navy/40"
            >
              Ultra-Luxe Feature
+             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light leading-snug normal-case font-normal text-center">
+                <span className="text-green-400 font-bold uppercase tracking-widest">AI Integration Agent:</span> Luxury staging + AVM overlay.
+             </div>
            </button>
         </div>
       )}
@@ -215,10 +239,11 @@ export default function MediaProductionPage() {
                            <button 
                              key={property.id}
                              onClick={() => setSelectedProperty(property)}
-                             className={`p-3 rounded-xl border text-left transition-all ${selectedProperty?.id === property.id ? 'bg-gold/10 border-gold shadow-[0_0_15px_rgba(201,168,76,0.1)]' : 'bg-navy/40 border-white/5 hover:border-white/20'}`}
+                             className={`group relative p-3 rounded-xl border text-left transition-all ${selectedProperty?.id === property.id ? 'bg-gold/10 border-gold shadow-[0_0_15px_rgba(201,168,76,0.1)]' : 'bg-navy/40 border-white/5 hover:border-white/20'}`}
                            >
                               <div className="text-[11px] font-bold text-white truncate">{property.address}</div>
                               <div className="text-[9px] text-slate mt-1">{property.city}, {property.state}</div>
+                              <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 text-[7px] font-bold text-gold uppercase tracking-tighter bg-navy px-1 rounded border border-gold/20">MLS Data Agent</div>
                            </button>
                         ))}
                      </div>
@@ -278,11 +303,11 @@ export default function MediaProductionPage() {
                        <label className="flex items-center gap-2 text-xs font-serif font-bold text-cream underline decoration-gold/30 underline-offset-4">
                           <Zap className="w-4 h-4" /> Real Estate AI Engine
                        </label>
-                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                           {[
-                             { id: 'AutoReel', desc: 'Real Estate Specialist. Best for quick turnaround & high-energy reels.', icon: RefreshCw },
-                             { id: 'Luma Dream Machine', desc: 'Hyper-Realistic. Best for ultra-luxury cinematics & lighting.', icon: Sparkles },
-                             { id: 'Google Veo 3.1', desc: 'Enterprise Grade. Best for text-to-video accuracy & consistency.', icon: Globe }
+                             { id: 'AutoReel', desc: 'Real Estate Specialist. Best for quick turnaround & high-energy reels.', icon: RefreshCw, agent: 'AI Integration Agent' },
+                             { id: 'Luma Dream Machine', desc: 'Hyper-Realistic. Best for ultra-luxury cinematics & lighting.', icon: Sparkles, agent: 'AI Integration Agent' },
+                             { id: 'Google Veo 3.1', desc: 'Enterprise Grade. Best for text-to-video accuracy & consistency.', icon: Globe, agent: 'Orchestrator + Judge' }
                           ].map((engine) => (
                              <button 
                                key={engine.id}
@@ -293,7 +318,10 @@ export default function MediaProductionPage() {
                                    <div className="text-[11px] font-bold text-white">{engine.id}</div>
                                    <engine.icon className={`w-3.5 h-3.5 ${settings.engine === engine.id ? 'text-gold' : 'text-slate'}`} />
                                 </div>
-                                <div className="text-[9px] text-slate leading-relaxed">{engine.desc}</div>
+                                <div className="text-[9px] text-slate leading-relaxed mb-2">{engine.desc}</div>
+                                <div className="text-[8px] font-bold text-gold/60 uppercase tracking-widest border-t border-white/5 pt-2">
+                                   {engine.agent}
+                                </div>
                                 {settings.engine === engine.id && (
                                    <div className="absolute top-0 right-0 p-1">
                                       <div className="w-1.5 h-1.5 rounded-full bg-gold shadow-[0_0_8px_#C9A84C]" />
@@ -359,15 +387,18 @@ export default function MediaProductionPage() {
                         <label className="flex items-center gap-2 text-xs font-serif font-bold text-cream">
                            <Sparkles className="w-4 h-4 text-gold" /> Advanced AI Rendering
                         </label>
-                        <div className="flex items-center justify-between p-3 bg-navy/40 border border-white/5 rounded-xl">
-                           <span className="text-[10px] font-bold text-slate-light uppercase tracking-widest">Neural 4K Upscale</span>
-                           <button 
-                             onClick={() => setSettings(s => ({ ...s, upscale: !s.upscale }))}
-                             className={`w-10 h-5 rounded-full relative transition-colors ${settings.upscale ? 'bg-gold' : 'bg-navy'}`}
-                           >
-                              <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${settings.upscale ? 'right-1' : 'left-1'}`} />
-                           </button>
-                        </div>
+                      <div className="flex items-center justify-between p-3 bg-navy/40 border border-white/5 rounded-xl group relative cursor-help">
+                         <span className="text-[10px] font-bold text-slate-light uppercase tracking-widest">Neural 4K Upscale</span>
+                         <button 
+                           onClick={() => setSettings(s => ({ ...s, upscale: !s.upscale }))}
+                           className={`w-10 h-5 rounded-full relative transition-colors ${settings.upscale ? 'bg-gold' : 'bg-navy'}`}
+                         >
+                            <div className={`absolute top-1 w-3 h-3 rounded-full bg-white transition-all ${settings.upscale ? 'right-1' : 'left-1'}`} />
+                         </button>
+                         <div className="absolute right-full mr-4 top-0 w-40 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light border-r-2 border-r-gold">
+                            <span className="text-gold font-bold uppercase block mb-1">CRM Builder Agent:</span> Enhances photos before MLS publish.
+                         </div>
+                      </div>
                      </div>
                      <div className="space-y-4">
                         <label className="flex items-center gap-2 text-xs font-serif font-bold text-cream">
@@ -378,9 +409,13 @@ export default function MediaProductionPage() {
                               <button 
                                 key={fps}
                                 onClick={() => setSettings(s => ({ ...s, fps }))}
-                                className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${settings.fps === fps ? 'bg-gold text-navy border-gold' : 'bg-navy/40 border-white/5 text-slate'}`}
+                                className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all group relative ${settings.fps === fps ? 'bg-gold text-navy border-gold' : 'bg-navy/40 border-white/5 text-slate'}`}
                               >
                                  {fps} FPS
+                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light border-b-2 border-b-gold">
+                                    <span className="text-gold font-bold uppercase block mb-1">{fps === 60 ? 'Orchestrator + Judge' : 'Orchestrator Agent'}</span>
+                                    {fps === 60 ? 'Real-time alert sync active.' : 'Standard 30s refresh rate.'}
+                                 </div>
                               </button>
                            ))}
                         </div>
@@ -398,9 +433,13 @@ export default function MediaProductionPage() {
                               <button 
                                 key={vo}
                                 onClick={() => setSettings(s => ({ ...s, voiceover: vo as any }))}
-                                className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${settings.voiceover === vo ? 'bg-gold text-navy border-gold' : 'bg-navy/40 border-white/5 text-slate'}`}
+                                className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all group relative ${settings.voiceover === vo ? 'bg-gold text-navy border-gold' : 'bg-navy/40 border-white/5 text-slate'}`}
                               >
                                  {vo} Voice
+                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light border-b-2 border-b-gold">
+                                    <span className="text-gold font-bold uppercase block mb-1">AI Integration Agent</span>
+                                    Convin AI {vo.toLowerCase()} profile.
+                                 </div>
                               </button>
                            ))}
                         </div>
@@ -414,9 +453,13 @@ export default function MediaProductionPage() {
                               <button 
                                 key={mu}
                                 onClick={() => setSettings(s => ({ ...s, music: mu as any }))}
-                                className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all ${settings.music === mu ? 'bg-gold text-navy border-gold' : 'bg-navy/40 border-white/5 text-slate'}`}
+                                className={`flex-1 py-3 rounded-xl border text-[10px] font-bold uppercase tracking-widest transition-all group relative ${settings.music === mu ? 'bg-gold text-navy border-gold' : 'bg-navy/40 border-white/5 text-slate'}`}
                               >
                                  {mu}
+                                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-32 p-2 bg-navy border border-gold/20 rounded shadow-2xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-[8px] text-slate-light border-b-2 border-b-gold">
+                                    <span className="text-gold font-bold uppercase block mb-1">{mu === 'Acoustic' ? 'Lead Intel Agent' : 'CRM Builder Agent'}</span>
+                                    {mu === 'Acoustic' ? 'Post-sale referral requests.' : mu === 'Cinematic' ? 'High-value lead alerts.' : 'Standard nurture profile.'}
+                                 </div>
                               </button>
                            ))}
                         </div>
@@ -447,15 +490,18 @@ export default function MediaProductionPage() {
                         <button 
                           onClick={handleGenerate}
                           disabled={!selectedProperty || isGenerating}
-                          className={`px-10 py-4 rounded-2xl font-bold uppercase tracking-[0.2em] shadow-2xl transition-all flex items-center gap-3 ${!selectedProperty ? 'bg-slate/20 text-slate grayscale cursor-not-allowed' : 'bg-gold text-navy hover:scale-105 active:scale-95'}`}
+                          className={`px-10 py-5 rounded-2xl font-bold uppercase tracking-[0.2em] shadow-2xl transition-all flex flex-col items-center gap-1 leading-none ${!selectedProperty ? 'bg-slate/20 text-slate grayscale cursor-not-allowed' : 'bg-gold text-navy hover:scale-105 active:scale-95'}`}
                         >
                            {isGenerating ? (
-                              <>
-                                <Loader2 className="w-5 h-5 animate-spin" /> Rendering Sequence...
-                              </>
+                              <div className="flex items-center gap-3">
+                                <Loader2 className="w-5 h-5 animate-spin" /> Orchestrating Agents...
+                              </div>
                            ) : (
                               <>
-                                <Send className="w-5 h-5" /> Start Neural Batch
+                                <div className="flex items-center gap-3">
+                                   <Send className="w-5 h-5" /> Start Neural Batch
+                                </div>
+                                <div className="text-[7px] font-bold tracking-[0.3em] opacity-60">All Specialists Ready</div>
                               </>
                            )}
                         </button>
@@ -679,12 +725,16 @@ export default function MediaProductionPage() {
                 </div>
 
                 <div className="space-y-6">
-                   <div>
+                   <div className="flex flex-col items-center">
                       <h3 className="text-2xl font-serif font-bold text-white mb-2 tracking-tight">AI Cinematic Videographer</h3>
-                      <p className="text-[10px] text-gold font-bold uppercase tracking-[0.3em] font-mono">{settings.engine} Active</p>
+                      <div className="flex items-center gap-4">
+                         <p className="text-[10px] text-gold font-bold uppercase tracking-[0.3em] font-mono">{settings.engine} Active</p>
+                         <div className="w-1.5 h-1.5 rounded-full bg-white/20" />
+                         <p className="text-[10px] text-blue-400 font-bold uppercase tracking-[0.3em] font-mono">Agent: {activeAgent}</p>
+                      </div>
                    </div>
 
-                   <div className="space-y-3">
+                   <div className="space-y-4">
                       <div className="h-1.5 w-full bg-white/5 rounded-full overflow-hidden border border-white/5">
                          <motion.div 
                            initial={{ width: 0 }}
@@ -693,15 +743,41 @@ export default function MediaProductionPage() {
                          />
                       </div>
                       <div className="flex justify-between items-center text-[9px] font-bold uppercase tracking-widest text-slate">
-                         <motion.span 
+                         <motion.div 
                            key={generationStep}
-                           initial={{ opacity: 0, y: 5 }}
-                           animate={{ opacity: 1, y: 0 }}
-                           className="text-gold"
+                           initial={{ opacity: 0, x: -10 }}
+                           animate={{ opacity: 1, x: 0 }}
+                           className="flex items-center gap-2 text-white"
                          >
+                            <span className="text-gold group-hover:animate-pulse">●</span>
                             {generationStep}
-                         </motion.span>
-                         <span>{generationProgress}%</span>
+                         </motion.div>
+                         <span className="font-mono">{generationProgress}%</span>
+                      </div>
+                   </div>
+
+                   {/* A2A Protocol Monitor */}
+                   <div className="p-4 bg-navy-mid/60 border border-white/5 rounded-2xl text-left space-y-3">
+                      <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                         <div className="text-[9px] font-bold text-slate uppercase tracking-widest">A2A Protocol Monitor</div>
+                         <div className={`text-[9px] font-bold px-2 py-0.5 rounded flex items-center gap-1.5 ${
+                           judgeStatus === 'APPROVED' ? 'bg-green-500/10 text-green-400' : 
+                           judgeStatus === 'VALIDATING' ? 'bg-red-500/10 text-red-500 animate-pulse' : 
+                           'bg-white/5 text-slate'
+                         }`}>
+                            <Shield className="w-3 h-3" />
+                            Judge: {judgeStatus}
+                         </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                         <div className="space-y-1">
+                            <div className="text-[8px] text-slate font-bold uppercase">Orchestrator Path</div>
+                            <div className="text-[9px] text-gold font-mono truncate">A2A_AUTH_SUCCESS_V3.1</div>
+                         </div>
+                         <div className="space-y-1">
+                            <div className="text-[8px] text-slate font-bold uppercase">Security Hash</div>
+                            <div className="text-[9px] text-white font-mono truncate">7F8X-P9L0-A2A1</div>
+                         </div>
                       </div>
                    </div>
 
