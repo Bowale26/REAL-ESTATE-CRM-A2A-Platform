@@ -1,8 +1,10 @@
 import { Award, TrendingUp, Target, Users, Search, Filter, Download, Star, Crown } from 'lucide-react';
 import { motion } from 'motion/react';
 import { AGENTS_DATA } from '../../constants';
+import { Currency } from '../../types';
+import { formatCurrency } from '../../lib/formatters';
 
-export default function LeaderboardPage() {
+export default function LeaderboardPage({ currency }: { currency: Currency }) {
   const sortedAgents = [...AGENTS_DATA].sort((a, b) => b.salesVolume - a.salesVolume);
 
   return (
@@ -36,11 +38,11 @@ export default function LeaderboardPage() {
       {/* Top 3 Podium */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-end mb-10">
          {/* Silver */}
-         <RankCard agent={sortedAgents[1]} rank={2} color="slate" />
+         <RankCard agent={sortedAgents[1]} rank={2} color="slate" currency={currency} />
          {/* Gold - Center & Taller */}
-         <RankCard agent={sortedAgents[0]} rank={1} color="gold" featured />
+         <RankCard agent={sortedAgents[0]} rank={1} color="gold" featured currency={currency} />
          {/* Bronze */}
-         <RankCard agent={sortedAgents[2]} rank={3} color="bronze" />
+         <RankCard agent={sortedAgents[2]} rank={3} color="bronze" currency={currency} />
       </div>
 
       {/* Full Rankings Table */}
@@ -88,7 +90,7 @@ export default function LeaderboardPage() {
                           </div>
                        </td>
                        <td className="px-6 py-4 text-right">
-                          <div className="text-sm font-bold text-cream">${(agent.salesVolume / 1000000).toFixed(1)}M</div>
+                          <div className="text-sm font-bold text-cream">{formatCurrency(agent.salesVolume, currency)}</div>
                        </td>
                        <td className="px-6 py-4 text-right">
                           <div className="text-sm font-bold text-slate">{agent.listingsTaken}</div>
@@ -111,7 +113,7 @@ export default function LeaderboardPage() {
   );
 }
 
-function RankCard({ agent, rank, color, featured }: { agent: any, rank: number, color: 'gold' | 'slate' | 'bronze', featured?: boolean }) {
+function RankCard({ agent, rank, color, featured, currency }: { agent: any, rank: number, color: 'gold' | 'slate' | 'bronze', featured?: boolean, currency: Currency }) {
   const colorMap = {
     gold: 'border-gold shadow-[0_0_30px_rgba(201,168,76,0.2)] bg-gradient-to-b from-gold/10 to-transparent',
     slate: 'border-white/20 bg-white/5',
@@ -149,7 +151,7 @@ function RankCard({ agent, rank, color, featured }: { agent: any, rank: number, 
        </div>
 
        <h3 className="text-lg font-bold text-white mb-1">{agent.name}</h3>
-       <div className="text-sm font-bold text-gold mb-4">${(agent.salesVolume / 1000000).toFixed(1)}M Total</div>
+       <div className="text-sm font-bold text-gold mb-4">{formatCurrency(agent.salesVolume, currency)} Total</div>
 
        <div className="grid grid-cols-2 gap-4 w-full pt-4 border-t border-white/5">
           <div>

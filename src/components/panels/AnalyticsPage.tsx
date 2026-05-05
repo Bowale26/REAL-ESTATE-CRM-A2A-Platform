@@ -32,59 +32,61 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { AGENTS_DATA, CAPTURE_CHANNELS } from '../../constants';
+import { Currency } from '../../types';
+import { formatCurrency } from '../../lib/formatters';
 
-const ROI_DATA = CAPTURE_CHANNELS.map(c => {
-  const revenue = parseInt(c.revenuePerLead.replace('$', '')) * (c.leadsGenerated * parseFloat(c.conversion) / 100);
-  const cost = c.leadsGenerated * (c.type === 'Valuation' ? 12 : c.type === 'Social Ad' ? 8 : 15); // Simulated costs
-  return {
-    name: c.name.split(' — ')[0],
-    revenue,
-    cost,
-    roi: ((revenue - cost) / cost * 100).toFixed(0),
-    leads: c.leadsGenerated,
-    conversion: parseFloat(c.conversion)
-  };
-});
-
-const SENTIMENT_RADAR_DATA = [
-  { subject: 'Pricing', A: 85, fullMark: 100 },
-  { subject: 'Inventory', A: 92, fullMark: 100 },
-  { subject: 'Mortgage', A: 45, fullMark: 100 },
-  { subject: 'Luxury', A: 88, fullMark: 100 },
-  { subject: 'Investment', A: 72, fullMark: 100 },
-  { subject: 'Development', A: 65, fullMark: 100 },
-];
-
-const CONVERSATION_INSIGHTS = [
-  {
-    neighborhood: 'Rosedale',
-    sentiment: 'Positive',
-    score: 88,
-    mainObjection: 'Lack of modern renovations in historical builds',
-    trendingInterest: 'EV charging readiness & Home Automation',
-    summary: 'High-net-worth buyers are pivoting towards "Turn-Key Tech"—historical exteriors with fully integrated A2A-managed smart systems.'
-  },
-  {
-    neighborhood: 'Yorkville',
-    sentiment: 'Negative',
-    score: 34,
-    mainObjection: 'Proximity to ongoing massive transit construction',
-    trendingInterest: 'Soundproof "Bio-Office" spaces',
-    summary: 'Sentiment is dampened by urban noise pollution. Conversion cycles are elongating as clients wait for construction milestones.'
-  },
-  {
-    neighborhood: 'Bridle Path',
-    sentiment: 'Neutral',
-    score: 55,
-    mainObjection: 'Oversupply of "Grey-Box" modernism',
-    trendingInterest: 'Underground security pavilions',
-    summary: 'Buyers are exhibiting "Aesthetic Fatigue". There is a significant move back towards traditional European craftsmanship.'
-  }
-];
-
-export default function AnalyticsPage() {
+export default function AnalyticsPage({ currency }: { currency: Currency }) {
   const [timeRange, setTimeRange] = useState('30d');
   const [activeInsightTab, setActiveInsightTab] = useState<'sentiment' | 'intelligence'>('intelligence');
+
+  const ROI_DATA = CAPTURE_CHANNELS.map(c => {
+    const revenue = parseInt(c.revenuePerLead.replace('$', '')) * (c.leadsGenerated * parseFloat(c.conversion) / 100);
+    const cost = c.leadsGenerated * (c.type === 'Valuation' ? 12 : c.type === 'Social Ad' ? 8 : 15); // Simulated costs
+    return {
+      name: c.name.split(' — ')[0],
+      revenue,
+      cost,
+      roi: ((revenue - cost) / cost * 100).toFixed(0),
+      leads: c.leadsGenerated,
+      conversion: parseFloat(c.conversion)
+    };
+  });
+
+  const SENTIMENT_RADAR_DATA = [
+    { subject: 'Pricing', A: 85, fullMark: 100 },
+    { subject: 'Inventory', A: 92, fullMark: 100 },
+    { subject: 'Mortgage', A: 45, fullMark: 100 },
+    { subject: 'Luxury', A: 88, fullMark: 100 },
+    { subject: 'Investment', A: 72, fullMark: 100 },
+    { subject: 'Development', A: 65, fullMark: 100 },
+  ];
+
+  const CONVERSATION_INSIGHTS = [
+    {
+      neighborhood: 'Rosedale',
+      sentiment: 'Positive',
+      score: 88,
+      mainObjection: 'Lack of modern renovations in historical builds',
+      trendingInterest: 'EV charging readiness & Home Automation',
+      summary: 'High-net-worth buyers are pivoting towards "Turn-Key Tech"—historical exteriors with fully integrated A2A-managed smart systems.'
+    },
+    {
+      neighborhood: 'Yorkville',
+      sentiment: 'Negative',
+      score: 34,
+      mainObjection: 'Proximity to ongoing massive transit construction',
+      trendingInterest: 'Soundproof "Bio-Office" spaces',
+      summary: 'Sentiment is dampened by urban noise pollution. Conversion cycles are elongating as clients wait for construction milestones.'
+    },
+    {
+      neighborhood: 'Bridle Path',
+      sentiment: 'Neutral',
+      score: 55,
+      mainObjection: 'Oversupply of "Grey-Box" modernism',
+      trendingInterest: 'Underground security pavilions',
+      summary: 'Buyers are exhibiting "Aesthetic Fatigue". There is a significant move back towards traditional European craftsmanship.'
+    }
+  ];
 
   return (
     <div className="space-y-6">
@@ -136,7 +138,10 @@ export default function AnalyticsPage() {
                       axisLine={false} 
                       tickLine={false} 
                       tick={{ fill: '#94a3b8', fontSize: 10, fontWeight: 600 }}
-                      tickFormatter={(val) => `$${val/1000}k`}
+                      tickFormatter={(val) => {
+                        if (currency === 'CAD') return `$${Math.round(val/1000)}k`;
+                        return `U$${Math.round(val/1000)}k`;
+                      }}
                     />
                     <Tooltip 
                       contentStyle={{ backgroundColor: '#0A1121', border: '1px solid rgba(201,168,76,0.3)', borderRadius: '8px', fontSize: '12px', color: '#fff' }}
@@ -316,7 +321,7 @@ export default function AnalyticsPage() {
                             </div>
                          </td>
                          <td className="py-4">
-                            <div className="text-xs font-bold text-cream">${(agent.salesVolume / 1000000).toFixed(1)}M</div>
+                            <div className="text-xs font-bold text-cream">{formatCurrency(agent.salesVolume, currency)}</div>
                          </td>
                          <td className="py-4">
                             <div className="text-xs font-bold text-slate">{agent.listingsTaken}</div>

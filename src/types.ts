@@ -16,6 +16,8 @@ export type PanelId =
   | 'enrichment'
   | 'calendar'
   | 'leaderboard'
+  | 'media'
+  | 'crm'
   | 'settings';
 
 export type PropertyType = 'Single Family' | 'Condo' | 'Townhouse' | 'Commercial';
@@ -191,4 +193,30 @@ export interface EnrichmentResult {
   equity: string;
   score: string;
   isEnriched: boolean;
+}
+
+export interface VideoProject {
+  id: string;
+  propertyId: string;
+  propertyName: string;
+  customName?: string;
+  status: 'rendering' | 'completed' | 'failed' | 'queued' | 'synced';
+  formats: ('16:9' | '9:16')[];
+  aiSettings: {
+    engine: 'AutoReel' | 'Luma Dream Machine' | 'Google Veo 3.1';
+    motion: 'Dolly Zoom' | 'Orbital' | 'Hybrid';
+    stagingStyle: 'Modern' | 'Luxury' | 'Scandinavian';
+    voiceover: 'Male' | 'Female';
+    music: 'Upbeat' | 'Cinematic' | 'Acoustic';
+  };
+  thumbnail?: string;
+  createdAt: string;
+}
+
+export interface CRMConnection {
+  id: string;
+  name: 'kvCORE' | 'Follow Up Boss' | 'Wise Agent' | 'LionDesk';
+  status: 'connected' | 'disconnected' | 'syncing';
+  lastSync: string;
+  leadCount: number;
 }

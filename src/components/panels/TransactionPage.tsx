@@ -24,7 +24,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { TRANSACTIONS_DATA, AGENTS_DATA } from '../../constants';
 import { Transaction, TransactionDoc, Currency, DateFormat } from '../../types';
-import { formatCurrency, formatDate } from '../../utils/formatters';
+import { formatCurrency, formatDate } from '../../lib/formatters';
 
 const STAGES = ['Qualified', 'Showing', 'Offer Submitted', 'Under Contract', 'Closing'];
 

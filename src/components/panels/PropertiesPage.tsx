@@ -22,7 +22,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { LISTINGS_DATA, AGENTS_DATA } from '../../constants';
 import { Listing, Currency } from '../../types';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency } from '../../lib/formatters';
 import PropertyDetailsModal from '../modals/PropertyDetailsModal';
 
 interface PropertiesPageProps {

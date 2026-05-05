@@ -1,12 +1,14 @@
 import { motion } from 'motion/react';
-import { Deal } from '../../types';
+import { Deal, Currency } from '../../types';
+import { formatCurrency } from '../../lib/formatters';
 
 interface PipelineBoardProps {
   deals: Deal[];
   onAddDeal: () => void;
+  currency: Currency;
 }
 
-export default function PipelineBoard({ deals, onAddDeal }: PipelineBoardProps) {
+export default function PipelineBoard({ deals, onAddDeal, currency }: PipelineBoardProps) {
   const colColors: any = {
     'Lead': 'text-blue-400',
     'Qualify': 'text-orange-400',
@@ -49,7 +51,7 @@ export default function PipelineBoard({ deals, onAddDeal }: PipelineBoardProps) 
                      className="bg-navy-mid/80 border border-gold/18 rounded-lg p-3.5 shadow-lg cursor-grab active:cursor-grabbing group transition-all"
                    >
                      <div className="text-[13px] font-bold text-white group-hover:text-gold mb-1 transition-colors">{card.name}</div>
-                     <div className="text-[12px] font-bold text-gold/80 mb-2">{card.val}</div>
+                     <div className="text-[12px] font-bold text-gold/80 mb-2">{formatCurrency(card.val, currency)}</div>
                      <div className="text-[10px] text-slate font-medium flex items-center gap-1.5">
                        <span className="w-1 h-1 rounded-full bg-slate/40" />
                        {card.meta}

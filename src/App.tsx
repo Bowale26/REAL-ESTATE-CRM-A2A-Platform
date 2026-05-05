@@ -21,7 +21,9 @@ import {
   Briefcase as BriefcaseIcon,
   FolderLock,
   Globe,
-  Award
+  Award,
+  Video,
+  Database
 } from 'lucide-react';
 import { PanelId, Contact, Lead, Deal, Email, CaptureChannel, Task, Workflow, Currency, DateFormat, Listing, Transaction } from './types';
 import { 
@@ -63,6 +65,8 @@ import CalendarPage from './components/panels/CalendarPage';
 import PropertiesPage from './components/panels/PropertiesPage';
 import TransactionPage from './components/panels/TransactionPage';
 import SettingsPage from './components/panels/SettingsPage';
+import MediaProductionPage from './components/panels/MediaProductionPage';
+import CRMIntegrationPage from './components/panels/CRMIntegrationPage';
 import ChatbotWidget from './components/ChatbotWidget';
 
 export default function App() {
@@ -365,6 +369,8 @@ export default function App() {
             <NavButton active={activePanel === 'workflow'} onClick={() => setActivePanel('workflow')} icon={<Settings />} label="Workflow Management" />
             <NavButton active={activePanel === 'analytics'} onClick={() => setActivePanel('analytics')} icon={<TrendingUp />} label="Reporting / Analytics" />
             <NavButton active={activePanel === 'leaderboard'} onClick={() => setActivePanel('leaderboard')} icon={<Award />} label="Agent Leaderboard" />
+            <NavButton active={activePanel === 'media'} onClick={() => setActivePanel('media')} icon={<Video />} label="AI Videographer" badge="New" badgeColor="gold" />
+            <NavButton active={activePanel === 'crm'} onClick={() => setActivePanel('crm')} icon={<Database />} label="CRM Integrations" />
             <NavButton active={activePanel === 'import'} onClick={() => setActivePanel('import')} icon={<RefreshCcw />} label="Data Import / Export" />
             <NavButton active={activePanel === 'settings'} onClick={() => setActivePanel('settings')} icon={<Globe />} label="System Settings" />
           </div>
@@ -471,7 +477,7 @@ export default function App() {
                   />
                 )}
                 {activePanel === 'ai_assistant' && <AiAssistant />}
-                {activePanel === 'valuation' && <ValuationPage />}
+                {activePanel === 'valuation' && <ValuationPage currency={currency} />}
                 {activePanel === 'workflow' && (
                   <WorkflowCanvas 
                     workflows={workflows} 
@@ -480,7 +486,7 @@ export default function App() {
                     onDeleteWorkflow={handleDeleteWorkflow}
                   />
                 )}
-                {activePanel === 'pipeline' && <PipelineBoard deals={deals} onAddDeal={() => setIsAddDealModalOpen(true)} />}
+                {activePanel === 'pipeline' && <PipelineBoard deals={deals} onAddDeal={() => setIsAddDealModalOpen(true)} currency={currency} />}
                 {activePanel === 'enrichment' && <EnrichmentPage />}
                 {activePanel === 'email' && (
                   <EmailPage 
@@ -502,8 +508,10 @@ export default function App() {
                     onNavigate={setActivePanel}
                   />
                 )}
-                {activePanel === 'analytics' && <AnalyticsPage />}
-                {activePanel === 'leaderboard' && <LeaderboardPage />}
+                {activePanel === 'analytics' && <AnalyticsPage currency={currency} />}
+                {activePanel === 'leaderboard' && <LeaderboardPage currency={currency} />}
+                {activePanel === 'media' && <MediaProductionPage />}
+                {activePanel === 'crm' && <CRMIntegrationPage />}
                 {activePanel === 'import' && <DataImportExportPage />}
                 {activePanel === 'calendar' && <CalendarPage />}
                 {activePanel === 'properties' && (
@@ -536,7 +544,7 @@ export default function App() {
                 )}
                 
                 {/* Fallback for other panels */}
-                {!['dashboard', 'contacts', 'leads', 'ai_assistant', 'valuation', 'workflow', 'pipeline', 'enrichment', 'email', 'capture', 'tasks', 'analytics', 'import', 'calendar', 'properties', 'transactions', 'settings'].includes(activePanel) && (
+                {!['dashboard', 'contacts', 'leads', 'ai_assistant', 'valuation', 'workflow', 'pipeline', 'enrichment', 'email', 'capture', 'tasks', 'analytics', 'import', 'calendar', 'properties', 'transactions', 'settings', 'media', 'crm', 'leaderboard'].includes(activePanel) && (
                   <div className="flex flex-col items-center justify-center py-20 text-slate">
                     <Zap className="w-12 h-12 mb-4 opacity-20" />
                     <p className="text-sm font-medium uppercase tracking-widest">{activePanel.replace('_', ' ')} - Module in development</p>

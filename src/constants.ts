@@ -18,6 +18,8 @@ export const PANEL_LABELS: Record<PanelId, [string, string]> = {
   enrichment: ['Identity Enrichment', 'Social verification & tax records'],
   calendar: ['Executive Schedule', 'Strategic calendar & Showing sync'],
   leaderboard: ['Agent Leaderboard', 'Performance rankings & market domination'],
+  media: ['Media Production', 'AI Cinematic Tours & Virtual Staging'],
+  crm: ['CRM Integration Hub', 'Multi-Node Synchronization Center'],
   settings: ['Global Configuration', 'Localization, Currency & Prefs'],
 };
 
@@ -128,3 +130,21 @@ export const DEALS_DATA: Deal[] = [
   { id: '2', name: 'T. Nakamura', val: '$1.1M', meta: 'MLS · 4 days', stage: 'Lead' },
   { id: '3', name: 'Alex Turner', val: '$1.2M', meta: 'SmartZip · Hot', stage: 'Qualify' },
 ];
+
+export const NORTH_AMERICAN_LOCATIONS = {
+  CANADA: [
+    'Alberta', 'British Columbia', 'Manitoba', 'New Brunswick', 'Newfoundland and Labrador', 
+    'Nova Scotia', 'Ontario', 'Prince Edward Island', 'Quebec', 'Saskatchewan', 
+    'Northwest Territories', 'Nunavut', 'Yukon'
+  ],
+  USA: [
+    'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut', 
+    'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa', 
+    'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan', 
+    'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada', 
+    'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina', 
+    'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island', 
+    'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont', 
+    'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming'
+  ]
+};

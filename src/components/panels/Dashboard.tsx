@@ -1,7 +1,7 @@
 import { PanelId, Currency } from '../../types';
 import { ReactNode } from 'react';
 import { motion } from 'motion/react';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency } from '../../lib/formatters';
 
 export default function Dashboard({ onNavigate, currency }: { onNavigate: (id: PanelId) => void, currency: Currency }) {
   return (

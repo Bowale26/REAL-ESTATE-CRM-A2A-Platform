@@ -1,7 +1,7 @@
 import { X, MapPin, Bed, Bath, Square, Calendar, DollarSign, TrendingUp, Shield, Trees, Car, Ruler, FileText, Zap, Image as ImageIcon, BarChart3, Waves, Wind } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Listing, Currency } from '../../types';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency } from '../../lib/formatters';
 import { AGENTS_DATA } from '../../constants';
 
 interface PropertyDetailsModalProps {
