@@ -23,7 +23,7 @@ import {
 import { motion } from 'motion/react';
 import { Currency, DateFormat } from '../../types';
 import { db, auth } from '../../lib/firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc } from 'firebase/firestore';
 import { useAuth } from '../../lib/AuthContext';
 
 interface SettingsProps {
@@ -47,32 +47,27 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
   const [subscription, setSubscription] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  // Mock data for initial state
+  // Monthly ($29.99): price_1TTsHhBMbxh6jv0CWt2ow7ZR
+  // Yearly ($299.99): price_1TTsN3BMbxh6jv0CoYgrJglw
+
+  // Fetch subscription from users collection (synced via webhook)
   useEffect(() => {
-    if (!auth.currentUser) return;
+    if (!user) return;
 
-    const q = query(
-      collection(db, 'customers', auth.currentUser.uid, 'subscriptions'),
-      where('status', 'in', ['trialing', 'active'])
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const subs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      if (subs.length > 0) {
-        setSubscription(subs[0]);
-      } else {
-        // Fallback mock if no real Firestore data exists yet
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
         setSubscription({
-          status: 'trialing',
-          role: 'Explorer',
-          expires: '7 Days'
+          status: data.subscriptionStatus || 'trialing',
+          role: data.subscriptionStatus === 'active' ? 'Pro' : 'Explorer',
+          expires: data.trialEnd ? new Date(data.trialEnd * 1000).toLocaleDateString() : 'N/A'
         });
       }
       setLoading(false);
     });
 
     return unsubscribe;
-  }, []);
+  }, [user]);
 
   const handleSync = () => {
     setIsSyncing(true);
@@ -220,7 +215,7 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
                                 onClick={() => handleSubscribe(plan, plan.trial)}
                                 className={`w-full py-2 rounded-lg text-[8px] font-bold uppercase tracking-widest transition-all ${plan.trial ? 'bg-gold text-navy shadow-lg shadow-gold/20' : 'bg-white/10 text-cream hover:bg-gold hover:text-navy'}`}
                              >
-                                {plan.trial ? '7-Day Trial' : plan.name.includes('Yearly') ? 'Save Yearly' : 'Get Monthly'}
+                                {plan.trial ? '7-Day Trial' : plan.name.includes('Yearly') ? 'Yearly Plan' : 'Monthly Plan'}
                              </button>
                           </div>
                        ))}
