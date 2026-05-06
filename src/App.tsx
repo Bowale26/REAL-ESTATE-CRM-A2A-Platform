@@ -23,7 +23,10 @@ import {
   Globe,
   Award,
   Video,
-  Database
+  Database,
+  LogIn,
+  LogOut,
+  Lock
 } from 'lucide-react';
 import { PanelId, Contact, Lead, Deal, Email, CaptureChannel, Task, Workflow, Currency, DateFormat, Listing, Transaction } from './types';
 import { 
@@ -68,8 +71,31 @@ import SettingsPage from './components/panels/SettingsPage';
 import MediaProductionPage from './components/panels/MediaProductionPage';
 import CRMIntegrationPage from './components/panels/CRMIntegrationPage';
 import ChatbotWidget from './components/ChatbotWidget';
+import { auth, googleProvider, db } from './lib/firebase';
+import { signInWithPopup, signOut } from 'firebase/auth';
+import { onSnapshot, doc } from 'firebase/firestore';
+import { useAuth } from './lib/AuthContext';
 
 export default function App() {
+  const { user } = useAuth();
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [trialEnd, setTrialEnd] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    const unsubscribe = onSnapshot(doc(db, 'users', user.uid), (docSnapshot) => {
+      if (docSnapshot.exists()) {
+        const data = docSnapshot.data();
+        setSubscriptionStatus(data.subscriptionStatus || 'trialing');
+        setTrialEnd(data.trialEnd || null);
+      } else {
+        setSubscriptionStatus('trialing');
+        setTrialEnd(null);
+      }
+    });
+    return unsubscribe;
+  }, [user]);
+
   const [activePanel, setActivePanel] = useState<PanelId>('dashboard');
   const [isAiDropdownOpen, setIsAiDropdownOpen] = useState(false);
   const [isSellerModalOpen, setIsSellerModalOpen] = useState(false);
@@ -318,6 +344,132 @@ export default function App() {
     }, 2000);
   };
 
+  const handleLogin = async () => {
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error) {
+      console.error('Login failed:', error);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-navy flex items-center justify-center p-4">
+        {/* Background Layers */}
+        <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_10%_20%,rgba(201,168,76,0.07)_0%,transparent_60%),radial-gradient(ellipse_60%_80%_at_90%_80%,rgba(52,152,219,0.06)_0%,transparent_60%),linear-gradient(160deg,#0B1628_0%,#0F2040_50%,#0B1628_100%)]" />
+        <div className="fixed inset-0 z-0 opacity-[0.025] bg-grid-pattern" />
+        
+        <motion.div 
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-10 w-full max-w-md bg-navy-mid/80 backdrop-blur-xl border border-gold/20 rounded-2xl p-10 shadow-2xl text-center"
+        >
+          <div className="w-16 h-16 bg-gradient-to-br from-gold to-gold-light rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(201,168,76,0.3)]">
+            <Building2 className="text-navy w-10 h-10" />
+          </div>
+          <h1 className="font-serif text-3xl font-bold text-white mb-2 uppercase tracking-tight">REAL ESTATE CRM</h1>
+          <p className="text-[10px] text-gold font-bold uppercase tracking-[0.3em] mb-10">A2A Intelligence Platform</p>
+          
+          <div className="space-y-4">
+            <button 
+              onClick={handleLogin}
+              className="w-full py-4 bg-gold text-navy font-bold rounded-xl flex items-center justify-center gap-3 hover:bg-gold-light transition-all shadow-[0_4px_20px_rgba(201,168,76,0.25)]"
+            >
+              <LogIn className="w-5 h-5" />
+              Sign in with Agency Account
+            </button>
+            <p className="text-[11px] text-slate-light italic font-medium leading-relaxed">
+              Secure authentication via Enterprise Sync Agent.<br/>
+              By signing in, you agree to the Multi-Market Policy.
+            </p>
+          </div>
+
+          <div className="mt-12 pt-10 border-t border-white/5 flex justify-center gap-8">
+            <div className="text-center">
+              <div className="text-white font-bold text-sm">12.4M</div>
+              <div className="text-[8px] text-slate font-bold uppercase tracking-widest mt-1">Data Nodes</div>
+            </div>
+            <div className="text-center">
+              <div className="text-white font-bold text-sm">99.8%</div>
+              <div className="text-[8px] text-slate font-bold uppercase tracking-widest mt-1">Accuracy</div>
+            </div>
+            <div className="text-center">
+              <div className="text-white font-bold text-sm">Real-time</div>
+              <div className="text-[8px] text-slate font-bold uppercase tracking-widest mt-1">MLS Sync</div>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  const isTrialExpired = subscriptionStatus === 'trialing' && trialEnd && (trialEnd * 1000 < Date.now());
+  const isSubscriptionInvalid = subscriptionStatus === 'canceled' || 
+                                subscriptionStatus === 'incomplete_expired' || 
+                                subscriptionStatus === 'past_due' ||
+                                isTrialExpired;
+
+  if (isSubscriptionInvalid) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-navy flex items-center justify-center p-4">
+        {/* Background Layers */}
+        <div className="fixed inset-0 z-0 bg-[radial-gradient(ellipse_80%_60%_at_10%_20%,rgba(201,168,76,0.07)_0%,transparent_60%)]" />
+        
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="relative z-10 w-full max-w-lg bg-navy-mid/80 backdrop-blur-xl border border-gold/40 rounded-2xl p-12 text-center"
+        >
+          <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-8">
+            <Lock className="text-red-400 w-8 h-8" />
+          </div>
+          <h2 className="font-serif text-3xl font-bold text-white mb-4 uppercase tracking-tight">Subscription Required</h2>
+          <p className="text-slate-light text-sm mb-10 leading-relaxed italic font-medium">
+            Your access to the A2A Intelligence Platform has expired.<br/>
+            Please reactivate your agency profile to continue managing property tours.
+          </p>
+          
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="p-4 bg-navy border border-white/5 rounded-xl">
+               <div className="text-[8px] text-gold font-bold uppercase tracking-widest mb-1">Monthly Plan</div>
+               <div className="text-xl font-serif font-bold text-white mb-2">$29.99</div>
+               <button 
+                 onClick={() => {
+                   setSubscriptionStatus('trialing'); // Simple bypass for demo/navigation
+                   setActivePanel('settings');
+                 }}
+                 className="w-full py-2 bg-gold text-navy text-[8px] font-bold uppercase rounded-lg"
+               >
+                 Go to Billing
+               </button>
+            </div>
+            <div className="p-4 bg-navy border border-white/5 rounded-xl opacity-60">
+               <div className="text-[8px] text-gold font-bold uppercase tracking-widest mb-1">Yearly Savings</div>
+               <div className="text-xl font-serif font-bold text-white mb-2">$299.99</div>
+               <button className="w-full py-2 bg-white/5 text-slate text-[8px] font-bold uppercase rounded-lg">
+                 Lock In Rate
+               </button>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="text-[10px] text-slate-light hover:text-gold uppercase tracking-[0.2em] font-bold"
+          >
+            Sign Out of Agency Account
+          </button>
+        </motion.div>
+      </div>
+    );
+  }
+
   // Theme colors and background layers
   return (
     <div className="relative min-h-screen overflow-hidden selection:bg-gold/30">
@@ -409,11 +561,41 @@ export default function App() {
 
           <button 
             onClick={() => setIsSellerModalOpen(true)}
-            className="mx-3 mt-2 mb-4 p-3 bg-gradient-to-br from-gold to-gold-mid border-none rounded-md text-navy font-semibold text-xs flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(201,168,76,0.25)] hover:-translate-y-px transition-all"
+            className="mx-3 mt-2 mb-2 p-3 bg-gradient-to-br from-gold to-gold-mid border-none rounded-md text-navy font-semibold text-xs flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(201,168,76,0.25)] hover:-translate-y-px transition-all"
           >
             <Target className="w-4 h-4" />
             <span>🎯 Find Seller Leads</span>
           </button>
+
+          <button 
+            onClick={() => setActivePanel('settings')}
+            className="mx-3 mb-4 p-3 bg-navy-mid border border-gold/30 rounded-md text-gold-light font-bold text-[10px] flex items-center justify-center gap-2 uppercase tracking-widest hover:bg-gold hover:text-navy transition-all shadow-lg animate-pulse hover:animate-none"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>7-Day Free Trial</span>
+          </button>
+          <div className="mt-auto p-4 border-t border-white/5">
+            <div className="flex items-center gap-3 p-3 bg-white/5 rounded-xl border border-white/5 group hover:border-gold/20 transition-all">
+              {user.photoURL ? (
+                <img src={user.photoURL} alt="" className="w-8 h-8 rounded-full border border-gold/30" />
+              ) : (
+                <div className="w-8 h-8 rounded-full bg-gold/10 flex items-center justify-center text-gold font-bold text-xs border border-gold/30">
+                  {user.displayName?.charAt(0) || user.email?.charAt(0)}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold text-white truncate">{user.displayName || 'Agent'}</p>
+                <p className="text-[9px] text-slate truncate">{user.email}</p>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="p-1.5 text-slate hover:text-red-400 hover:bg-red-400/10 rounded transition-all"
+                title="Logout"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
         </aside>
 
         {/* Main Content */}

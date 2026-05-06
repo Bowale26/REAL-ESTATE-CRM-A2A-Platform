@@ -1,0 +1,125 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User account and profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["agent", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "Customer": {
+      "title": "Stripe Customer",
+      "description": "Stripe customer data synchronized by the extension",
+      "type": "object",
+      "properties": {
+        "stripeId": { "type": "string" },
+        "stripeLink": { "type": "string" }
+      }
+    },
+    "Product": {
+      "title": "Stripe Product",
+      "description": "Product data from Stripe",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "active": { "type": "boolean" },
+        "images": { "type": "array" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "Price": {
+      "title": "Stripe Price",
+      "description": "Price data for a specific product",
+      "type": "object",
+      "properties": {
+        "active": { "type": "boolean" },
+        "unit_amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "type": { "type": "string" },
+        "interval": { "type": "string" },
+        "interval_count": { "type": "number" }
+      }
+    },
+    "Subscription": {
+      "title": "Stripe Subscription",
+      "description": "User subscription details",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "price": { "type": "string" },
+        "product": { "type": "string" },
+        "cancel_at_period_end": { "type": "boolean" },
+        "current_period_start": { "type": "string", "format": "date-time" },
+        "current_period_end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Property": {
+      "title": "Property Listing",
+      "description": "Real estate property details",
+      "type": "object",
+      "properties": {
+        "address": { "type": "string" },
+        "city": { "type": "string" },
+        "state": { "type": "string" },
+        "zipCode": { "type": "string" },
+        "price": { "type": "number" },
+        "beds": { "type": "number" },
+        "baths": { "type": "number" },
+        "sqft": { "type": "number" },
+        "status": { "type": "string" },
+        "ownerId": { "type": "string" }
+      }
+    },
+    "VideoProject": {
+      "title": "Media Production Project",
+      "description": "AI-generated video project",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "status": { "type": "string" },
+        "engine": { "type": "string" },
+        "motion": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Collection of user profiles"
+    },
+    "customers": {
+      "schema": "Customer",
+      "description": "Stripe customer information"
+    },
+    "customers/{uid}/subscriptions": {
+      "schema": "Subscription",
+      "description": "User subscriptions via Stripe"
+    },
+    "products": {
+      "schema": "Product",
+      "description": "Available subscription products"
+    },
+    "products/{productId}/prices": {
+      "schema": "Price",
+      "description": "Prices for subscription products"
+    },
+    "properties": {
+      "schema": "Property",
+      "description": "Real estate listings"
+    },
+    "video_projects": {
+      "schema": "VideoProject",
+      "description": "Media production history"
+    }
+  }
+}
