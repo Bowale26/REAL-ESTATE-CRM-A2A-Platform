@@ -22,14 +22,19 @@ export default function LeadCapturePage({ channels, onCreatePage }: LeadCaptureP
         <div className="p-5 bg-white/5 border-b border-white/5 flex items-center justify-between">
           <div>
             <h3 className="text-sm font-semibold text-white">Lead Capture Channels</h3>
-            <p className="text-[10px] text-slate mt-1 uppercase tracking-widest font-bold">Inbound funnel management</p>
+            <p className="text-[10px] text-slate mt-1 uppercase tracking-widest font-bold">Inbound funnel performance tracking</p>
           </div>
-          <button 
-            onClick={onCreatePage}
-            className="flex items-center gap-2 px-4 py-2 bg-gold rounded-md text-[11px] font-bold text-navy hover:bg-gold-light transition-all shadow-lg active:scale-95"
-          >
-            <Plus className="w-3.5 h-3.5" /> Create New Funnel
-          </button>
+          <div className="flex items-center gap-2">
+            <button className="px-3 py-1.5 border border-white/10 rounded text-[10px] font-bold text-slate hover:text-white transition-colors uppercase tracking-widest">
+              Performance Audit
+            </button>
+            <button 
+              onClick={onCreatePage}
+              className="flex items-center gap-2 px-4 py-2 bg-gold rounded-md text-[11px] font-bold text-navy hover:bg-gold-light transition-all shadow-lg active:scale-95"
+            >
+              <Plus className="w-3.5 h-3.5" /> Create New Funnel
+            </button>
+          </div>
         </div>
 
         <div className="p-5">
@@ -41,21 +46,36 @@ export default function LeadCapturePage({ channels, onCreatePage }: LeadCaptureP
         </div>
       </div>
 
-      <div className="bg-navy-mid/40 border border-gold/10 rounded-lg p-6">
-        <div className="flex items-center gap-3 mb-6">
-           <div className="p-2 bg-gold/10 rounded border border-gold/20">
-             <Zap className="w-5 h-5 text-gold" />
-           </div>
-           <div>
-             <h4 className="text-sm font-bold text-white">AI Magic Redirects</h4>
-             <p className="text-xs text-slate">Automatically route leads based on predicted intent score.</p>
-           </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="md:col-span-2 bg-navy-mid/40 border border-gold/10 rounded-lg p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3">
+               <div className="p-2 bg-gold/10 rounded border border-gold/20">
+                 <Zap className="w-5 h-5 text-gold" />
+               </div>
+               <div>
+                 <h4 className="text-sm font-bold text-white">AI Magic Redirects</h4>
+                 <p className="text-xs text-slate">Automatically route leads based on predicted intent score.</p>
+               </div>
+            </div>
+            <button className="text-[10px] font-bold text-gold uppercase hover:underline tracking-widest">Configure Ethics Guard</button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+             <RoutingRule title="High Equity Sellers" route="Dedicated listing agent" status="Active" icon="🏠" />
+             <RoutingRule title="First Time Buyers" route="Nurture sequence A" status="Active" icon="🔑" />
+             <RoutingRule title="Investors" route="Commercial desk" status="Paused" icon="🏢" />
+          </div>
         </div>
-        
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-           <RoutingRule title="High Equity Sellers" route="Dedicated listing agent" status="Active" icon="🏠" />
-           <RoutingRule title="First Time Buyers" route="Nurture sequence A" status="Active" icon="🔑" />
-           <RoutingRule title="Investors" route="Commercial desk" status="Paused" icon="🏢" />
+
+        <div className="bg-gold/5 border border-gold/20 rounded-lg p-6 flex flex-col items-center justify-center text-center relative overflow-hidden group">
+           <div className="absolute top-0 right-0 w-32 h-32 bg-gold/10 blur-3xl -translate-y-1/2 translate-x-1/2 group-hover:bg-gold/20 transition-all" />
+           <MousePointer2 className="w-10 h-10 text-gold mb-4 group-hover:scale-110 transition-transform" />
+           <h4 className="text-white font-serif font-bold text-lg mb-2">Omnichannel Attribution</h4>
+           <p className="text-xs text-slate-light leading-relaxed mb-6">Track lead origin from Instagram, MLS, and Print with 99.4% precision using the A2A Smart Pixel.</p>
+           <button className="w-full py-3 bg-white/5 border border-white/10 rounded-lg text-[10px] font-bold text-white uppercase tracking-[2px] hover:bg-gold hover:text-navy transition-all">
+             View Pixel Stats
+           </button>
         </div>
       </div>
     </div>

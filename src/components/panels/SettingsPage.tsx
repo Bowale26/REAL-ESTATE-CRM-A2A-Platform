@@ -12,10 +12,13 @@ import {
   RefreshCcw,
   User,
   Mail,
-  Key
+  Key,
+  Trash2,
+  ExternalLink
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Currency, DateFormat } from '../../types';
+import { clearAllAppData } from '../../lib/cache-utils';
 
 interface SettingsProps {
   currency: Currency;
@@ -23,9 +26,14 @@ interface SettingsProps {
   dateFormat: DateFormat;
   setDateFormat: (f: DateFormat) => void;
   onSync: () => void;
+  userProfile: any;
+  setUserProfile: (p: any) => void;
 }
 
-export default function SettingsPage({ currency, setCurrency, dateFormat, setDateFormat, onSync }: SettingsProps) {
+const MONTHLY_ID = 'price_1TTsHhBMbxh6jv0CWt2ow7ZR';
+const YEARLY_ID = 'price_1TTsN3BMbxh6jv0CoYgrJglw';
+
+export default function SettingsPage({ currency, setCurrency, dateFormat, setDateFormat, onSync, userProfile, setUserProfile }: SettingsProps) {
   const [notifications, setNotifications] = useState({
     email: true,
     push: true,
@@ -34,11 +42,65 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
   });
 
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
+  const [subscriptionLoading, setSubscriptionLoading] = useState<string | null>(null);
 
   const handleSync = () => {
     setIsSyncing(true);
     onSync();
     setTimeout(() => setIsSyncing(false), 2000);
+  };
+
+  const handleClearCache = () => {
+    if (confirm("This will clear all local application data, logout your current session, and reload the app. Continue?")) {
+      setIsClearing(true);
+      setTimeout(() => {
+        clearAllAppData();
+      }, 1000);
+    }
+  };
+
+  const handleCheckout = async (priceId: string, isTrial: boolean) => {
+    setSubscriptionLoading(priceId);
+    try {
+      const response = await fetch('/api/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          priceId,
+          isTrial,
+          userId: userProfile?.uid || 'dev_user_123',
+        }),
+      });
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert(data.error || "Failed to create checkout session. Please ensure STRIPE_SECRET_KEY is configured.");
+      }
+    } catch (error) {
+      console.error("Checkout Error:", error);
+      alert("An error occurred during checkout.");
+    } finally {
+      setSubscriptionLoading(null);
+    }
+  };
+
+  const handleSimulateExpiry = () => {
+    const eightDaysAgo = new Date();
+    eightDaysAgo.setDate(eightDaysAgo.getDate() - 8);
+    // Simulate Firestore timestamp structure
+    const mockTimestamp = { seconds: Math.floor(eightDaysAgo.getTime() / 1000) };
+    
+    // In a real app, you'd update this in Firestore and the app would react.
+    alert("Simulating an 8-day old trial. The App.tsx trial check will now trigger the expiry alert and redirect you.");
+    
+    setUserProfile({
+      ...(userProfile || {}),
+      trialStarted: mockTimestamp,
+      status: 'trialing'
+    });
   };
 
   return (
@@ -48,14 +110,31 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
           <h2 className="text-xl font-bold text-white font-serif tracking-tight">Global System Configuration</h2>
           <p className="text-[10px] text-gold font-bold uppercase tracking-[0.2em] mt-1">Cross-Border Operations Hub</p>
         </div>
-        <button 
-          onClick={handleSync}
-          disabled={isSyncing}
-          className="flex items-center gap-2 px-4 py-1.5 border border-gold/30 rounded-md text-[11px] font-bold text-gold hover:bg-gold/10 transition-all shadow-lg disabled:opacity-50"
-        >
-          {isSyncing ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
-          {isSyncing ? 'Synchronizing State...' : 'Force Global State Sync'}
-        </button>
+        <div className="flex gap-2">
+          <button 
+            onClick={handleSimulateExpiry}
+            className="flex items-center gap-2 px-4 py-1.5 border border-purple-500/30 rounded-md text-[11px] font-bold text-purple-400 hover:bg-purple-500/10 transition-all shadow-lg"
+          >
+            <Shield className="w-3.5 h-3.5" />
+            Simulate Expired Trial
+          </button>
+          <button 
+            onClick={handleClearCache}
+            disabled={isClearing}
+            className="flex items-center gap-2 px-4 py-1.5 border border-red-500/30 rounded-md text-[11px] font-bold text-red-400 hover:bg-red-500/10 transition-all shadow-lg disabled:opacity-50"
+          >
+            {isClearing ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+            {isClearing ? 'Clearing...' : 'Clear App Cache & Cookies'}
+          </button>
+          <button 
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-4 py-1.5 border border-gold/30 rounded-md text-[11px] font-bold text-gold hover:bg-gold/10 transition-all shadow-lg disabled:opacity-50"
+          >
+            {isSyncing ? <RefreshCcw className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
+            {isSyncing ? 'Synchronizing State...' : 'Force Global State Sync'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -73,8 +152,12 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
                        <h4 className="text-lg font-serif font-bold text-white mb-2">7-Day Free Trial</h4>
                        <p className="text-[10px] text-slate-light leading-relaxed mb-4">Experience full neural agent capability with zero commitment.</p>
                     </div>
-                    <button className="w-full py-2.5 bg-white/5 hover:bg-gold hover:text-navy border border-white/10 hover:border-gold rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all">
-                       Sign Up Now
+                    <button 
+                      onClick={() => handleCheckout(MONTHLY_ID, true)}
+                      disabled={subscriptionLoading !== null}
+                      className="w-full py-2.5 bg-white/5 hover:bg-gold hover:text-navy border border-white/10 hover:border-gold rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                    >
+                       {subscriptionLoading === MONTHLY_ID ? 'Processing...' : 'Start Trial Session'}
                     </button>
                  </div>
 
@@ -85,8 +168,12 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
                        <h4 className="text-lg font-serif font-bold text-white mb-2">$29.99<span className="text-[10px] text-slate ml-1 uppercase">/month</span></h4>
                        <p className="text-[10px] text-slate-light leading-relaxed mb-4">Unlimited lead capture and advanced cinematic AI production.</p>
                     </div>
-                    <button className="w-full py-2.5 bg-gold text-navy rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg hover:bg-gold-light">
-                       Subscribe Monthly
+                    <button 
+                      onClick={() => handleCheckout(MONTHLY_ID, false)}
+                      disabled={subscriptionLoading !== null}
+                      className="w-full py-2.5 bg-gold text-navy rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all shadow-lg hover:bg-gold-light disabled:opacity-50"
+                    >
+                       {subscriptionLoading === MONTHLY_ID ? 'Processing...' : 'Subscribe Monthly'}
                     </button>
                  </div>
 
@@ -96,8 +183,12 @@ export default function SettingsPage({ currency, setCurrency, dateFormat, setDat
                        <h4 className="text-lg font-serif font-bold text-white mb-2">$299.99<span className="text-[10px] text-slate ml-1 uppercase">/year</span></h4>
                        <p className="text-[10px] text-slate-light leading-relaxed mb-4">Full network access with 2 months free and priority agent processing.</p>
                     </div>
-                    <button className="w-full py-2.5 bg-white/10 hover:bg-gold hover:text-navy border border-white/10 hover:border-gold rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all">
-                       Save with Annual
+                    <button 
+                      onClick={() => handleCheckout(YEARLY_ID, false)}
+                      disabled={subscriptionLoading !== null}
+                      className="w-full py-2.5 bg-white/10 hover:bg-gold hover:text-navy border border-white/10 hover:border-gold rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all disabled:opacity-50"
+                    >
+                       {subscriptionLoading === YEARLY_ID ? 'Processing...' : 'Save with Annual'}
                     </button>
                  </div>
               </div>

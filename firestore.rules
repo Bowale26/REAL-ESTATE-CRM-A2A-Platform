@@ -1,33 +1,110 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Standard Deny All
+    // -------------------------------------------------------------------------
+    // GLOBAL HELPERS
+    // -------------------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Admin bootstrap
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'isadewum@gmail.com';
+    }
+
+    // Default deny
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Health Check (Infrastructure)
-    match /health_check/{id} {
-      allow read: if true;
-      allow write: if false;
+    function isTenantMember(tenantId) {
+      return isSignedIn() && request.auth.token.firebase.get('tenant', null) == tenantId;
     }
 
-    // User Profiles
+    // -------------------------------------------------------------------------
+    // COLLECTIONS
+    // -------------------------------------------------------------------------
+
+    // Users
     match /users/{userId} {
-      allow read: if request.auth != null && request.auth.uid == userId;
-      
-      // Prevent users from manually changing their subscription status
-      // Only allow them to update their basic profile (name, preferences)
-      allow update: if request.auth != null && request.auth.uid == userId 
-                    && !request.resource.data.diff(resource.data).affectedKeys()
-                        .hasAny(['subscriptionStatus', 'trialEndDate']);
+      allow read, write: if isOwner(userId);
     }
 
-    // Transactions and Listings: User must be authenticated to see their data
+    // Channels
+    match /channels/{channelId} {
+      allow read: if isTenantMember(resource.data.get('tenantId', null));
+      allow create, update: if isTenantMember(incoming().get('tenantId', null));
+      allow delete: if isTenantMember(resource.data.get('tenantId', null));
+    }
+
+    // Contacts
+    match /contacts/{contactId} {
+      allow read: if isTenantMember(resource.data.get('tenantId', null));
+      allow create, update: if isTenantMember(incoming().get('tenantId', null));
+      allow delete: if isTenantMember(resource.data.get('tenantId', null));
+    }
+
+    // Listings
     match /listings/{listingId} {
-      // For create/update, check incoming data. For read/delete, check existing data.
-      allow read, delete: if request.auth != null && resource.data.ownerId == request.auth.uid;
-      allow create, update: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      allow read: if isSignedIn();
+      allow create: if isEmailVerified() && isValidListing(incoming());
+      allow update: if isEmailVerified() && (isAdmin() || isOwner(existing().agentId)) && isValidListing(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidListing(data) {
+      return data.address is string && data.address.size() <= 200 &&
+             data.city is string && data.city.size() <= 100 &&
+             data.status in ['Active', 'Pending', 'Sold', 'Withdrawn'];
+    }
+
+    // Leads
+    match /leads/{leadId} {
+      allow read: if isEmailVerified() && (isAdmin() || isOwner(resource.data.agentId));
+      allow create: if isEmailVerified() && isValidLead(incoming());
+      allow update: if isEmailVerified() && (isAdmin() || isOwner(existing().agentId)) && isValidLead(incoming());
+      allow delete: if isAdmin();
+    }
+
+    function isValidLead(data) {
+      return data.name is string && data.name.size() <= 100 &&
+             data.status is string;
+    }
+
+    // Tasks
+    match /tasks/{taskId} {
+      allow read, write: if isEmailVerified() && (isAdmin() || isOwner(resource.data.userId));
+    }
+
+    // Video Projects
+    match /videoProjects/{projectId} {
+      allow read, write: if isEmailVerified() && (isAdmin() || isOwner(resource.data.userId));
+    }
+
+    // CRM Connections
+    match /crmConnections/{connectionId} {
+      allow read, write: if isEmailVerified() && isAdmin();
     }
   }
 }

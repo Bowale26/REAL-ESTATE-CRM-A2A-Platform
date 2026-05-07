@@ -2,429 +2,180 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import { google } from "googleapis";
 import Stripe from "stripe";
 import admin from "firebase-admin";
-import { getFirestore } from "firebase-admin/firestore";
-import cors from "cors";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Initialize Firebase Admin
-import firebaseConfig from "./firebase-applet-config.json";
-
-let adminApp: admin.app.App;
-
-console.log("Initializing Firebase Admin for project:", firebaseConfig.projectId);
-console.log("Using custom databaseId:", firebaseConfig.firestoreDatabaseId);
-
-if (!admin.apps.length) {
-  const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
-  if (serviceAccount) {
-    try {
-      console.log("Using FIREBASE_SERVICE_ACCOUNT from environment.");
-      adminApp = admin.initializeApp({
-        credential: admin.credential.cert(JSON.parse(serviceAccount)),
-        projectId: firebaseConfig.projectId
-      });
-    } catch (e) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to ADC.", e);
-      adminApp = admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        projectId: firebaseConfig.projectId,
-      });
-    }
-  } else {
-    console.log("No service account found, using ADC with projectId:", firebaseConfig.projectId);
-    try {
-      adminApp = admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        projectId: firebaseConfig.projectId,
-      });
-    } catch (e) {
-      console.warn("applicationDefault() failed, falling back to minimal config.", e);
-      adminApp = admin.initializeApp({
-        projectId: firebaseConfig.projectId,
-      });
-    }
-  }
-} else {
-  adminApp = admin.app();
-}
-
-console.log("Final Admin Configuration - Project:", adminApp.options.projectId);
-console.log("Final Admin Configuration - Credential Type:", adminApp.options.credential ? "Present" : "Missing");
-
-let db: any;
-async function initializeFirestore() {
-  const databaseId = firebaseConfig.firestoreDatabaseId;
-  const projectId = firebaseConfig.projectId;
-  
-  console.log(`Initializing Cloud Firestore - Project: ${projectId}, DB: ${databaseId || "(default)"}`);
-  
-  try {
-    // Explicitly pass project and database IDs to avoid environment ambiguity
-    const firestoreSettings: any = {
-      projectId: projectId,
-    };
-    if (databaseId) {
-      firestoreSettings.databaseId = databaseId;
-    }
-
-    // Try creating the client directly via standard Firebase Admin
-    db = getFirestore(adminApp, databaseId);
-    
-    // Test the connection immediately (async but don't block startServer indefinitely)
-    db.collection("_health_check_").doc("ping").get()
-      .then(() => console.log(`✅ Firestore connected successfully to: ${databaseId || "(default)"}`))
-      .catch((err: any) => {
-        console.warn(`⚠️ Firestore test failed for DB: ${databaseId}. Error: ${err.message}`);
-        if (databaseId) {
-          console.log("Attempting fallback to default database instance...");
-          db = getFirestore(adminApp);
-        }
-      });
-  } catch (err: any) {
-    console.error("❌ CRITICAL Firestore Initialization Error:", err.message);
-    db = getFirestore(adminApp); // Last ditch effort
-  }
-}
-
-// Call initialization
-initializeFirestore();
-
-console.log("Firestore initialization scheduled.");
-
-// Initialize Stripe Lazily
+// Lazy initialization for Stripe
 let stripe: Stripe | null = null;
-function getStripe() {
-  if (!stripe) {
-    const key = process.env.STRIPE_SECRET_KEY;
-    if (!key) {
-      throw new Error("STRIPE_SECRET_KEY is not defined in environment variables");
-    }
-    stripe = new Stripe(key, { apiVersion: "2026-04-22.dahlia" });
+const getStripe = () => {
+  if (!stripe && process.env.STRIPE_SECRET_KEY) {
+    stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
   }
   return stripe;
-}
+};
 
-// Unified helper to get user data with failover
-async function getUserDoc(userId: string) {
-  if (!db) throw new Error("Database not initialized");
-  
-  try {
-    return await db.collection("users").doc(userId).get();
-  } catch (err: any) {
-    console.error(`❌ Firestore get failed for user ${userId}: ${err.message}`);
-    
-    // If it's a permission/connectivity issue, try falling back to default DB once
-    if (err.code === 7 || err.message.includes("permission") || err.message.includes("database")) {
-      console.log("🔄 Attempting failover to default Firestore database...");
+// Lazy initialization for Firebase Admin
+let db: admin.firestore.Firestore | null = null;
+const getDb = () => {
+  if (!db && process.env.FIREBASE_SERVICE_ACCOUNT) {
+    try {
+      const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT.trim();
+      
+      const parsedKey = typeof serviceAccount === "string" && serviceAccount.startsWith("{")
+        ? JSON.parse(serviceAccount) 
+        : serviceAccount;
+
+      if (admin.apps.length === 0) {
+        const config: admin.AppOptions = {
+          databaseURL: "https://ais-us-west2-bb0457d9fa664a64b.firebaseio.com"
+        };
+
+        if (typeof parsedKey === "object") {
+          config.credential = admin.credential.cert(parsedKey);
+        }
+
+        admin.initializeApp(config);
+        console.log("Firebase Admin Initialized Successfully");
+      }
+      db = admin.firestore();
+    } catch (error: any) {
+      console.error("CRITICAL: Firebase Init Failed:", error.message);
+      // Fallback: try to initialize without credentials if possible (e.g. running on GCP)
       try {
-        const fallbackDb = getFirestore(adminApp);
-        return await fallbackDb.collection("users").doc(userId).get();
-      } catch (fallbackErr: any) {
-        console.error("❌ Failover also failed:", fallbackErr.message);
-        throw fallbackErr;
+        if (admin.apps.length === 0) {
+          admin.initializeApp({
+            databaseURL: "https://ais-us-west2-bb0457d9fa664a64b.firebaseio.com"
+          });
+          db = admin.firestore();
+        }
+      } catch (innerError: any) {
+        console.error("Firebase Admin Fallback Initialization Failed:", innerError.message);
       }
     }
-    throw err;
   }
-}
+  return db;
+};
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT || 3000;
+  const PORT = 3000;
 
-  // Stripe Webhook needs raw body
-  app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
-    const sig = req.headers["stripe-signature"] as string;
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  app.use(express.json());
 
-    if (!webhookSecret) {
-      console.error("STRIPE_WEBHOOK_SECRET is missing");
-      return res.status(400).send("Webhook config error");
-    }
+  // Google OAuth Config
+  const oauth2Client = new google.auth.OAuth2(
+    process.env.GOOGLE_CLIENT_ID,
+    process.env.GOOGLE_CLIENT_SECRET,
+    `${process.env.APP_URL || "http://localhost:3000"}/auth/callback`
+  );
 
-    let event: Stripe.Event;
+  // Authentication Routes
+  app.get("/api/auth/url", (req, res) => {
+    const scopes = [
+      "https://www.googleapis.com/auth/calendar.events",
+      "https://www.googleapis.com/auth/gmail.readonly",
+      "https://www.googleapis.com/auth/userinfo.profile",
+      "https://www.googleapis.com/auth/userinfo.email"
+    ];
 
-    try {
-      event = getStripe().webhooks.constructEvent(req.body, sig, webhookSecret);
-    } catch (err: any) {
-      console.error(`Webhook signature verification failed.`, err.message);
-      return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
+    const url = oauth2Client.generateAuthUrl({
+      access_type: "offline",
+      scope: scopes,
+      prompt: "consent"
+    });
 
-    // Handle the event
-    switch (event.type) {
-      case "checkout.session.completed": {
-        const session = event.data.object as Stripe.Checkout.Session;
-        const userId = session.client_reference_id;
-        const subscriptionId = session.subscription as string;
-        const customerId = session.customer as string;
-
-        if (userId && subscriptionId) {
-          const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
-          const priceId = subscription.items.data[0].price.id;
-          const yearlyPriceId = process.env.PRICE_YEARLY || process.env.VITE_STRIPE_YEARLY_PRICE_ID;
-          const plan = priceId === yearlyPriceId ? 'yearly' : 'monthly';
-
-          await db.collection("users").doc(userId).set({
-            subscriptionStatus: "active",
-            stripeCustomerId: customerId,
-            stripeSubscriptionId: subscriptionId,
-            plan: plan,
-            currentPeriodEnd: admin.firestore.Timestamp.fromMillis((subscription as any).current_period_end * 1000),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          }, { merge: true });
-          console.log(`✅ Subscription created for user ${userId} (${plan})`);
-        }
-        break;
-      }
-
-      case "customer.subscription.updated": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const userSnapshot = await db.collection("users")
-          .where("stripeSubscriptionId", "==", subscription.id)
-          .limit(1)
-          .get();
-
-        if (!userSnapshot.empty) {
-          const userId = userSnapshot.docs[0].id;
-          const priceId = subscription.items.data[0].price.id;
-          const yearlyPriceId = process.env.PRICE_YEARLY || process.env.VITE_STRIPE_YEARLY_PRICE_ID;
-          const plan = priceId === yearlyPriceId ? 'yearly' : 'monthly';
-
-          await db.collection("users").doc(userId).update({
-            subscriptionStatus: subscription.status,
-            plan: plan,
-            currentPeriodEnd: admin.firestore.Timestamp.fromMillis((subscription as any).current_period_end * 1000),
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.log(`🔄 Subscription updated for user ${userId}: ${subscription.status}`);
-        }
-        break;
-      }
-
-      case "customer.subscription.deleted": {
-        const subscription = event.data.object as Stripe.Subscription;
-        const userSnapshot = await db.collection("users")
-          .where("stripeSubscriptionId", "==", subscription.id)
-          .limit(1)
-          .get();
-
-        if (!userSnapshot.empty) {
-          const userId = userSnapshot.docs[0].id;
-          await db.collection("users").doc(userId).update({
-            subscriptionStatus: "canceled",
-            plan: "none",
-            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-          });
-          console.log(`❌ Subscription canceled for user ${userId}`);
-        }
-        break;
-      }
-
-      case "invoice.payment_failed": {
-        const invoice = event.data.object as Stripe.Invoice;
-        console.log(`⚠️ Payment failed for invoice ${invoice.id}`);
-        break;
-      }
-
-      default:
-        console.log(`Unhandled event type ${event.type}`);
-    }
-
-    res.json({ received: true });
+    res.json({ url });
   });
 
-  // Regular JSON parser for other routes
-  app.use(express.json());
-  app.use(cors());
+  app.get("/auth/callback", async (req, res) => {
+    const { code } = req.query;
+    try {
+      const { tokens } = await oauth2Client.getToken(code as string);
+      // In a real app, you'd store tokens in a session/DB
+      // For this demo, we'll just send success back to the opener
+      res.send(`
+        <html>
+          <body>
+            <script>
+              window.opener.postMessage({ type: 'OAUTH_AUTH_SUCCESS', tokens: ${JSON.stringify(tokens)} }, '*');
+              window.close();
+            </script>
+            <p>Authentication successful. Synchronizing with Google Workspace...</p>
+          </body>
+        </html>
+      `);
+    } catch (error) {
+      console.error("Error exchanging code for tokens", error);
+      res.status(500).send("Authentication failed");
+    }
+  });
 
   // API Routes
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
   });
 
-  app.get("/api/config", (req, res) => {
-    res.json({
-      priceMonthly: process.env.PRICE_MONTHLY || process.env.VITE_STRIPE_MONTHLY_PRICE_ID,
-      priceYearly: process.env.PRICE_YEARLY || process.env.VITE_STRIPE_YEARLY_PRICE_ID,
-      stripePublishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY
+  // Lead Nurturing Mock API
+  app.post("/api/leads/nurture", (req, res) => {
+    const { leadEmail } = req.body;
+    res.json({ 
+      success: true, 
+      plan: `AI sequence triggered for ${leadEmail}. 3-step follow-up scheduled.`,
+      nextStep: "Drafting personalized market update for Rosedale properties."
     });
   });
 
-  app.post("/api/init-user", async (req, res) => {
-    const { userId, email, displayName } = req.body;
-    if (!userId) return res.status(400).json({ error: "Missing userId" });
+  // Stripe Checkout Session Endpoint
+  app.post("/api/create-session", async (req, res) => {
+    const { priceId, userId, isTrial } = req.body;
+    const stripeClient = getStripe();
+    const firestore = getDb();
+
+    // Safety check: If Firebase didn't init, don't let Stripe proceed
+    if (!admin.apps.length) {
+      return res.status(500).json({ error: "Database Connection Down. Firebase Admin initialization failed." });
+    }
+
+    if (!stripeClient) {
+      return res.status(403).json({ error: "Stripe secret key not configured in environment variables." });
+    }
 
     try {
-      if (!db) {
-        throw new Error("Firestore not initialized");
-      }
-
-      // Use the helper with failover
-      const userRef = db.collection("users").doc(userId);
-      let docSnapshot;
-      try {
-        docSnapshot = await userRef.get();
-      } catch (e: any) {
-        console.log("Initial fetch failed, trying fallback init...");
-        const fallbackDb = getFirestore(adminApp);
-        docSnapshot = await fallbackDb.collection("users").doc(userId).get();
-        db = fallbackDb; // Switch if successful
-      }
-
-      if (!docSnapshot.exists) {
-        const now = new Date();
-        const trialStart = now.getTime(); // Match user's requested 'trialStart' label
-
-        await userRef.set({
-          email: email || "",
-          displayName: displayName || "",
-          trialStart: trialStart, 
-          trialStartDate: now.toISOString(),
-          subscriptionStatus: "trialing",
-          status: "trialing", // User request uses 'status'
-          plan: "none",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
-        console.log(`🆕 Created CRM profile for user ${userId} with 7-Day Trial`);
-        return res.json({ created: true });
-      }
-      res.json({ created: false, message: "User already exists" });
-    } catch (error: any) {
-      console.error("❌ Error initializing user in CRM:", error.message);
+      const baseUrl = process.env.FRONTEND_URL || process.env.APP_URL || "http://localhost:3000";
       
-      // Fallback logic for permission errors
-      if (error.code === 7 || error.message.includes("permission")) {
-         console.error("PERMISSION_DENIED detected. This is a deployment environment issue.");
-      }
-
-      res.status(500).json({ 
-        error: error.message, 
-        code: error.code,
-        details: "Firestore access error. Check IAM roles."
-      });
-    }
-  });
-
-  app.post("/api/create-checkout-session", async (req, res) => {
-    const { userId, email, priceId } = req.body;
-
-    if (!userId || !email || !priceId) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    try {
-      const origin = process.env.FRONTEND_URL || req.headers.origin;
-      const session = await getStripe().checkout.sessions.create({
+      const session = await stripeClient.checkout.sessions.create({
         payment_method_types: ["card"],
-        line_items: [
-          {
-            price: priceId,
-            quantity: 1,
-          },
-        ],
+        line_items: [{ price: priceId, quantity: 1 }],
         mode: "subscription",
-        success_url: `${origin}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${origin}/billing`,
-        customer_email: email,
-        client_reference_id: userId,
-        subscription_data: {
-          trial_period_days: 7,
-          metadata: { userId },
-        },
-        metadata: { userId },
+        subscription_data: isTrial ? { trial_period_days: 7 } : {},
+        success_url: `${baseUrl}/dashboard?success=true`,
+        cancel_url: `${baseUrl}/pricing`,
+        metadata: { userId: userId }
       });
 
-      res.json({ url: session.url });
-    } catch (error: any) {
-      console.error("Stripe Error:", error);
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  app.post("/api/create-portal-session", async (req, res) => {
-    const { stripeCustomerId } = req.body;
-    if (!stripeCustomerId) {
-      return res.status(400).json({ error: "Missing stripeCustomerId" });
-    }
-
-    try {
-      const origin = process.env.FRONTEND_URL || req.headers.origin;
-      const session = await getStripe().billingPortal.sessions.create({
-        customer: stripeCustomerId,
-        return_url: `${origin}/billing`,
-      });
-      res.json({ url: session.url });
-    } catch (error: any) {
-      res.status(500).json({ error: error.message });
-    }
-  });
-
-  // Check detailed subscription status (7-Day Trial enforcement)
-  app.get("/api/subscription-status/:userId", async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const userDoc = await getUserDoc(userId);
-
-      if (!userDoc.exists) {
-        return res.json({ status: "no_account", access: "blocked", redirect: true, url: "/billing" });
+      // SAFETY WRAPPER: Try to write to Firestore but don't crash if it fails
+      if (firestore && userId) {
+        try {
+          await firestore.collection("subscriptions").doc(userId).set({
+            priceId,
+            trialStarted: isTrial ? admin.firestore.FieldValue.serverTimestamp() : null,
+            status: "pending_payment",
+            lastSessionId: session.id,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp()
+          }, { merge: true });
+        } catch (dbError: any) {
+          console.error("Firestore write failed, but session created:", dbError.message);
+        }
       }
 
-      const userData = userDoc.data();
-      if (!userData) return res.status(500).json({ error: "Empty user data" });
-
-      // Enforce 7-Day Trial (Match user's requested logic)
-      const now = Date.now();
-      const trialStart = userData.trialStart || (userData.trialStartDate ? new Date(userData.trialStartDate).getTime() : 0);
-      const trialDuration = 7 * 24 * 60 * 60 * 1000;
-      const trialExpired = trialStart && (now - trialStart) > trialDuration;
-      
-      const isActive = userData.subscriptionStatus === "active" || userData.status === "active";
-
-      if (trialExpired && !isActive) {
-        return res.json({
-          ...userData,
-          status: "trial_expired",
-          access: "blocked",
-          redirect: true,
-          url: "/billing",
-          trialDaysLeft: 0
-        });
-      }
-
-      // Valid Trial or Active Subscription
-      const daysLeft = trialStart ? Math.ceil((trialStart + trialDuration - now) / (1000 * 60 * 60 * 24)) : 0;
-
-      return res.json({
-        ...userData,
-        status: isActive ? "active" : "trial",
-        access: "full",
-        redirect: false,
-        trialDaysLeft: isActive ? 0 : Math.max(0, daysLeft),
-      });
-
+      // Return both ID and URL to support multiple frontend redirect methods
+      res.json({ id: session.id, url: session.url });
     } catch (error: any) {
-      console.error("Database connection failed:", error.message);
-      // Fallback: If DB check fails, protect by showing pricing/billing
-      res.json({ redirect: true, url: "/billing", error: error.message });
-    }
-  });
-
-  // Check trial/subscription status (Legacy endpoint preserved for compatibility)
-  app.get("/api/user-status/:userId", async (req, res) => {
-    const { userId } = req.params;
-    try {
-      const doc = await db.collection("users").doc(userId).get();
-      if (!doc.exists) {
-        return res.status(404).json({ error: "User not found" });
-      }
-      res.json(doc.data());
-    } catch (error: any) {
+      console.error("Stripe Session Error:", error.message);
       res.status(500).json({ error: error.message });
     }
   });
@@ -444,7 +195,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", async () => {
+  app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running at http://0.0.0.0:${PORT}`);
   });
 }

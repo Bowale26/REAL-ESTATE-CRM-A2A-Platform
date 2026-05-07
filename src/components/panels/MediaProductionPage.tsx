@@ -1,8 +1,32 @@
-import { Video, Camera, Mic, Music, Layout, Download, Play, Plus, Image as ImageIcon, Sparkles, Filter, CheckCircle2, Loader2, Send, RefreshCw, Layers, Edit3, Trash2, Globe, Settings as SettingsIcon, X, Check, Zap, Shield } from 'lucide-react';
+import { Video, Camera, Mic, Music, Layout, Download, Play, Plus, Image as ImageIcon, Sparkles, Filter, CheckCircle2, Loader2, Send, RefreshCw, Layers, Edit3, Trash2, Globe, Settings as SettingsIcon, X, Check, Zap, Shield, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Listing, VideoProject } from '../../types';
 import { LISTINGS_DATA } from '../../constants';
+import { GoogleGenAI } from "@google/genai";
+import { db, auth } from '../../lib/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  query, 
+  where,
+  orderBy,
+  serverTimestamp
+} from 'firebase/firestore';
+import { handleFirestoreError, OperationType } from '../../lib/firebase-error-handler';
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    }
+  }
+}
 
 export default function MediaProductionPage() {
   const [activeTab, setActiveTab] = useState<'create' | 'projects'>('create');
@@ -14,23 +38,49 @@ export default function MediaProductionPage() {
   const [judgeStatus, setJudgeStatus] = useState<'IDLE' | 'VALIDATING' | 'APPROVED' | 'REJECTED'>('IDLE');
   const [editingProject, setEditingProject] = useState<VideoProject | null>(null);
   const [isSyncing, setIsSyncing] = useState<string | null>(null);
-  const [projects, setProjects] = useState<VideoProject[]>([
-    {
-      id: 'v1',
-      propertyId: '1',
-      propertyName: '4820 Stone Canyon Ave',
-      status: 'completed',
-      formats: ['16:9', '9:16'],
-      aiSettings: {
-        engine: 'AutoReel',
-        motion: 'Dolly Zoom',
-        stagingStyle: 'Luxury',
-        voiceover: 'Female',
-        music: 'Cinematic'
-      },
-      createdAt: '2024-05-01'
+  const [hasApiKey, setHasApiKey] = useState<boolean>(false);
+  const [showApiKeyDialog, setShowApiKeyDialog] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    checkApiKey();
+
+    if (!auth.currentUser) return;
+
+    const q = query(
+      collection(db, 'videoProjects'),
+      where('userId', '==', auth.currentUser.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const projectsData = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as VideoProject[];
+      setProjects(projectsData);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'videoProjects');
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const checkApiKey = async () => {
+    if (window.aistudio) {
+      const selected = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(selected);
     }
-  ]);
+  };
+
+  const handleOpenSelectKey = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      setHasApiKey(true);
+      setShowApiKeyDialog(false);
+    }
+  };
+  const [projects, setProjects] = useState<VideoProject[]>([]);
 
   const [settings, setSettings] = useState<VideoProject['aiSettings'] & { branding: boolean, captions: boolean, upscale: boolean, fps: number }>({
     engine: 'AutoReel',
@@ -44,16 +94,90 @@ export default function MediaProductionPage() {
     fps: 60
   });
 
-  const handleDelete = (id: string) => {
-    setProjects(projects.filter(p => p.id !== id));
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'videoProjects', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `videoProjects/${id}`);
+    }
   };
 
-  const handleSyncMLS = (id: string) => {
+  const handleSyncMLS = async (id: string) => {
     setIsSyncing(id);
-    setTimeout(() => {
-      setProjects(projects.map(p => p.id === id ? { ...p, status: 'synced' } : p));
+    try {
+      await updateDoc(doc(db, 'videoProjects', id), {
+        status: 'synced',
+        updatedAt: serverTimestamp()
+      });
       setIsSyncing(null);
-    }, 2000);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `videoProjects/${id}`);
+      setIsSyncing(null);
+    }
+  };
+
+  const generateVeoVideo = async (property: Listing) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) {
+        setErrorMessage("API key missing. Please ensure GEMINI_API_KEY is set in your environment.");
+        return null;
+      }
+
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `A professional cinematic property tour of a luxury real estate listing at ${property.address}, ${property.city}. ${property.description}. Include ${settings.motion} camera movements and ${settings.stagingStyle} virtual staging. High-end lighting, architectural focus.`;
+      
+      setGenerationStep('AI Integration Agent: Initialising Veo 3.1 Pipeline...');
+      setGenerationProgress(10);
+      
+      // @ts-ignore
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-lite-generate-preview',
+        prompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: '1080p',
+          aspectRatio: '16:9'
+        }
+      });
+
+      setGenerationStep('Veo Core: Generating neural video frames (this may take a few minutes)...');
+      
+      // Poll for completion
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        setGenerationProgress(prev => Math.min(prev + 5, 85));
+        
+        try {
+          // @ts-ignore
+          operation = await ai.models.getVideosOperation({ name: operation.name });
+        } catch (pollErr: any) {
+          throw pollErr;
+        }
+      }
+
+      setGenerationProgress(90);
+      setGenerationStep('Judge Agent: Validating output quality...');
+      
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (!downloadLink) throw new Error("Video generation failed - no URI returned");
+
+      const videoResponse = await fetch(downloadLink, {
+        method: 'GET',
+        headers: { 'x-goog-api-key': apiKey },
+      });
+
+      if (!videoResponse.ok) throw new Error("Failed to fetch generated video content");
+
+      const blob = await videoResponse.blob();
+      const videoUrl = URL.createObjectURL(blob);
+
+      return { videoUrl, prompt };
+    } catch (error: any) {
+      console.error("Veo Generation Error:", error);
+      setErrorMessage(error.message || "An unexpected error occurred during video generation.");
+      return null;
+    }
   };
 
   const handleUpdateProject = (updated: VideoProject) => {
@@ -105,12 +229,50 @@ export default function MediaProductionPage() {
     }
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!selectedProperty) return;
+
+    // Check API Key for Veo
+    if (settings.engine === 'Google Veo 3.1' && !hasApiKey) {
+      setShowApiKeyDialog(true);
+      return;
+    }
+    
     setIsGenerating(true);
     setGenerationProgress(0);
     setJudgeStatus('IDLE');
+    setErrorMessage(null);
     
+    if (settings.engine === 'Google Veo 3.1') {
+      const result = await generateVeoVideo(selectedProperty);
+      
+      if (!result) {
+        setIsGenerating(false);
+        return;
+      }
+
+      const newProjectData = {
+        userId: auth.currentUser?.uid,
+        propertyId: selectedProperty.id,
+        propertyName: selectedProperty.address,
+        status: 'completed',
+        formats: ['16:9', '9:16'],
+        aiSettings: { ...settings },
+        videoUrl: result.videoUrl,
+        prompt: result.prompt,
+        createdAt: new Date().toISOString().split('T')[0],
+        serverCreatedAt: serverTimestamp()
+      };
+      
+      await addDoc(collection(db, 'videoProjects'), newProjectData);
+      
+      setIsGenerating(false);
+      setActiveTab('projects');
+      setJudgeStatus('APPROVED');
+      return;
+    }
+
+    // Standard Mock Pipeline for other engines
     const steps = [
       { msg: 'MLS Data Agent: Fetching Listing Record...', progress: 15, agent: 'MLS Data Agent' },
       { msg: `AI Integration: Initialising ${settings.engine} Pipeline...`, progress: 30, agent: 'AI Integration Agent' },
@@ -134,17 +296,24 @@ export default function MediaProductionPage() {
       } else {
         clearInterval(interval);
         setJudgeStatus('APPROVED');
-        setTimeout(() => {
-          const newProject: VideoProject = {
-            id: Math.random().toString(36).substr(2, 9),
+        setTimeout(async () => {
+          const newProjectData = {
+            userId: auth.currentUser?.uid,
             propertyId: selectedProperty.id,
             propertyName: selectedProperty.address,
             status: 'completed',
             formats: ['16:9', '9:16'],
             aiSettings: { ...settings },
-            createdAt: new Date().toISOString().split('T')[0]
+            createdAt: new Date().toISOString().split('T')[0],
+            serverCreatedAt: serverTimestamp()
           };
-          setProjects([newProject, ...projects]);
+          
+          try {
+            await addDoc(collection(db, 'videoProjects'), newProjectData);
+          } catch (error) {
+            handleFirestoreError(error, OperationType.CREATE, 'videoProjects');
+          }
+          
           setIsGenerating(false);
           setActiveTab('projects');
         }, 800);
@@ -536,10 +705,26 @@ export default function MediaProductionPage() {
                      </button>
                   </div>
 
-                  <div className="aspect-video bg-navy relative">
-                     <div className="absolute inset-0 flex items-center justify-center text-gold/10 group-hover:scale-110 transition-transform">
-                        <Video className="w-16 h-16" />
-                     </div>
+                  <div className="aspect-video bg-navy relative overflow-hidden">
+                     {project.status === 'completed' && project.videoUrl ? (
+                         <video 
+                           src={project.videoUrl}
+                           className="w-full h-full object-cover"
+                           muted
+                           loop
+                           playsInline
+                           onMouseEnter={(e) => e.currentTarget.play()}
+                           onMouseLeave={(e) => {
+                             e.currentTarget.pause();
+                             e.currentTarget.currentTime = 0;
+                           }}
+                         />
+                     ) : (
+                        <div className="absolute inset-0 flex items-center justify-center text-gold/10 group-hover:scale-110 transition-transform">
+                           <Video className="w-16 h-16" />
+                        </div>
+                     )}
+                     
                      {project.status === 'rendering' ? (
                         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-center p-6">
                            <Loader2 className="w-8 h-8 text-gold animate-spin mb-4" />
@@ -798,6 +983,72 @@ export default function MediaProductionPage() {
                 </div>
              </motion.div>
           </div>
+        )}
+      </AnimatePresence>
+
+      {/* API Key Selection Dialog */}
+      <AnimatePresence>
+        {showApiKeyDialog && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-black/90 backdrop-blur-md">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-navy-mid border border-gold/30 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl p-8 text-center"
+            >
+              <Shield className="w-16 h-16 text-gold mx-auto mb-6" />
+              <h3 className="text-xl font-serif font-bold text-white mb-2">API Key Required</h3>
+              <p className="text-sm text-slate leading-relaxed mb-6">
+                To use the High-Quality Veo 3.1 video generation model, you must select your own paid Google Cloud API key.
+              </p>
+              
+              <div className="bg-gold/5 border border-gold/20 p-4 rounded-xl mb-6 text-left">
+                <p className="text-[10px] text-slate-light leading-relaxed">
+                  1. Visit <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="text-gold hover:underline">Billing Documentation</a> to ensure your project is linked.
+                  <br />
+                  2. Your project must be on a paid plan for Veo access.
+                  <br />
+                  3. Select the key in the following dialog.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={handleOpenSelectKey}
+                  className="w-full py-4 bg-gold text-navy rounded-xl font-bold uppercase tracking-widest shadow-xl hover:scale-105 transition-all"
+                >
+                  Select API Key
+                </button>
+                <button 
+                  onClick={() => setShowApiKeyDialog(false)}
+                  className="w-full py-3 border border-white/10 text-slate rounded-xl text-xs font-bold uppercase tracking-widest"
+                >
+                  Maybe Later
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Error Message Toast */}
+      <AnimatePresence>
+        {errorMessage && (
+          <motion.div 
+            initial={{ opacity: 0, y: 50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 50 }}
+            className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[300] px-6 py-4 bg-red-900/90 border border-red-500/50 rounded-2xl shadow-2xl flex items-center gap-4 backdrop-blur-xl"
+          >
+            <AlertTriangle className="w-6 h-6 text-red-400" />
+            <div className="text-left">
+              <div className="text-[10px] font-bold text-red-400 uppercase tracking-widest">Generation Error</div>
+              <p className="text-xs text-white mt-0.5">{errorMessage}</p>
+            </div>
+            <button onClick={() => setErrorMessage(null)} className="ml-4 p-1 hover:bg-white/10 rounded">
+              <X className="w-4 h-4 text-white" />
+            </button>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

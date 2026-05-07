@@ -200,6 +200,8 @@ export interface VideoProject {
   propertyId: string;
   propertyName: string;
   customName?: string;
+  prompt?: string;
+  videoUrl?: string;
   status: 'rendering' | 'completed' | 'failed' | 'queued' | 'synced';
   formats: ('16:9' | '9:16')[];
   aiSettings: {

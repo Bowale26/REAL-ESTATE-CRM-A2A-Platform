@@ -49,6 +49,15 @@ export default function TasksPage({ tasks, onAddTask, onToggleTask, onNavigate }
               <Tab active={filter === 'Completed'} label="Completed" onClick={() => setFilter('Completed')} />
            </div>
            
+           <div className="flex items-center gap-2 ml-4 border-l border-white/10 pl-4">
+              <button className="px-3 py-1.5 bg-white/5 border border-white/10 rounded text-[10px] font-bold text-slate hover:text-gold transition-colors uppercase tracking-widest">
+                Bulk Complete
+              </button>
+              <button className="px-3 py-1.5 bg-white/5 border border-white/10 rounded text-[10px] font-bold text-slate hover:text-red-400 transition-colors uppercase tracking-widest">
+                Bulk Delete
+              </button>
+           </div>
+           
            <div className="ml-auto relative">
               <Search className="w-3.5 h-3.5 text-slate absolute left-3 top-1/2 -translate-y-1/2" />
               <input 

@@ -20,6 +20,7 @@ import {
   Eye
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { GoogleGenAI } from "@google/genai";
 import { LISTINGS_DATA, AGENTS_DATA } from '../../constants';
 import { Listing, Currency } from '../../types';
 import { formatCurrency } from '../../lib/formatters';
@@ -100,18 +101,37 @@ export default function PropertiesPage({ listings, onAddListing, onEditListing, 
     setEditingListing(null);
   };
 
-  const generateAiDescription = (id: string) => {
+  const generateAiDescription = async (id: string) => {
     setIsGeneratingDescription(id);
-    setTimeout(() => {
+    try {
       const listing = listings.find(l => l.id === id);
-      if (listing) {
-        onEditListing({
-          ...listing,
-          description: `✨ AI GENERATED: Experience unparalleled luxury at ${listing.address}. This ${listing.beds}-bedroom masterpiece in ${listing.city} offers ${listing.sqft} sqft of meticulously curated space. Characterized by premium finishes and an intuitive flow, this property represents the pinnacle of ${listing.state} real estate. Ideal for discerning buyers seeking a blend of elegance and modern utility.`
-        });
-      }
+      if (!listing) return;
+
+      const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+      const prompt = `Generate a luxury real estate marketing description for this property:
+        Address: ${listing.address}, ${listing.city}, ${listing.state}
+        Price: ${formatCurrency(listing.price, currency)}
+        Stats: ${listing.beds} beds, ${listing.baths} baths, ${listing.sqft} sqft
+        MLS#: ${listing.mlsNumber}
+        
+        Focus on: High-end lifestyle, architectural details, and market exclusivity. Keep it under 150 words. Format with a catchy headline.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt
+      });
+
+      const description = response.text || "Failed to generate description.";
+      
+      onEditListing({
+        ...listing,
+        description
+      });
+    } catch (error) {
+      console.error("AI Description Error:", error);
+    } finally {
       setIsGeneratingDescription(null);
-    }, 2000);
+    }
   };
 
   return (
