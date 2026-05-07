@@ -2,12 +2,12 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Default deny
+    // 0. Global Safety Net: Default deny everything
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // Helper functions
+    // --- GLOBAL HELPERS ---
     function isSignedIn() {
       return request.auth != null;
     }
@@ -28,28 +28,46 @@ service cloud.firestore {
       return resource.data;
     }
 
-    // User Profile Validation
+    // --- ENTITY VALIDATIONS ---
+
+    // User Profile Validation (Pillar 2)
     function isValidUser(data) {
-      return data.keys().hasAll(['email', 'trialStart', 'subscriptionStatus', 'plan', 'createdAt', 'updatedAt']) 
+      return data.keys().hasAll(['email', 'trialStart', 'subscriptionStatus', 'plan', 'createdAt', 'updatedAt'])
         && data.email is string && data.email.size() <= 256
         && data.subscriptionStatus in ['trialing', 'active', 'canceled', 'past_due', 'none']
-        && data.plan in ['monthly', 'yearly', 'none'];
+        && data.plan in ['monthly', 'yearly', 'none']
+        && (data.displayName == null || (data.displayName is string && data.displayName.size() <= 128));
     }
 
+    // --- COLLECTION RULES ---
+
     match /users/{userId} {
-      allow get: if isOwner(userId);
+      // Pillar 3: Hardened Path ID (only for get/create/update/delete)
+      // allow list: if isSignedIn() && resource.data.userId == request.auth.uid; // Pattern if listing
       
-      // Allow creation of profile on first login
+      // Pillar 6: PII Isolation - Only allow read of own profile (contains email)
+      allow get: if isOwner(userId) && isValidId(userId);
+      
+      // Pillar 8: Secure List Queries
+      allow list: if isOwner(userId);
+
+      // Pillar 2 & 10: Validation Blueprint & Timestamps
       allow create: if isOwner(userId) 
         && isValidId(userId)
         && isValidUser(incomingData())
-        && incomingData().subscriptionStatus == 'trialing'; // Default to trialing on create
+        && incomingData().createdAt == request.time
+        && incomingData().updatedAt == request.time;
 
-      // Updates: Users can only update their own profile
-      // subscriptionStatus and trialStart are managed by the server or initial creation
+      // Pillar 4: Tiered Identity Logic & Pillar 9: Immutability
       allow update: if isOwner(userId)
+        && isValidId(userId)
         && isValidUser(incomingData())
-        && incomingData().diff(existingData()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt']);
+        && incomingData().updatedAt == request.time
+        && incomingData().createdAt == existingData().createdAt
+        && (
+          // Allow updating specific fields
+          incomingData().diff(existingData()).affectedKeys().hasOnly(['email', 'displayName', 'updatedAt', 'subscriptionStatus', 'plan', 'stripeCustomerId', 'stripeSubscriptionId', 'currentPeriodEnd'])
+        );
     }
   }
 }

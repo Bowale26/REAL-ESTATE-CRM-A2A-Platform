@@ -2,12 +2,13 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { onAuthStateChanged, User, signOut } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db, signInWithGoogle } from './lib/firebase';
+import { auth, db, signInWithGoogle, checkDbConnection } from './lib/firebase';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Billing } from './components/Billing';
 import { Landing } from './components/Landing';
 import { Loader2 } from 'lucide-react';
+import { handleFirestoreError, OperationType } from './lib/firebaseUtils';
 
 interface UserStatus {
   email: string;
@@ -44,6 +45,7 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   const [user, setUser] = useState<User | null>(null);
   const [status, setStatus] = useState<UserStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   const fetchStatus = async (uid: string) => {
     try {
@@ -58,24 +60,42 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   };
 
   useEffect(() => {
+    const runChecks = async () => {
+      const isConnected = await checkDbConnection();
+      if (!isConnected) {
+        setDbError("CRITICAL: The Firestore API is not yet initialized or is disabled in your project. Please wait a few minutes or enable it at https://console.cloud.google.com/apis/library/firestore.googleapis.com");
+      }
+    };
+    runChecks();
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
         setLoading(true); // Keep loading while we fetch data
+        const userPath = `users/${user.uid}`;
         try {
           const userRef = doc(db, 'users', user.uid);
-          const docSnap = await getDoc(userRef);
+          let docSnap;
+          try {
+            docSnap = await getDoc(userRef);
+          } catch (err) {
+            handleFirestoreError(err, OperationType.GET, userPath);
+          }
           
-          if (!docSnap.exists()) {
-            await setDoc(userRef, {
-              email: user.email,
-              displayName: user.displayName,
-              trialStart: serverTimestamp(),
-              subscriptionStatus: 'trialing',
-              plan: 'none',
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
+          if (!docSnap || !docSnap.exists()) {
+            try {
+              await setDoc(userRef, {
+                email: user.email,
+                displayName: user.displayName,
+                trialStart: serverTimestamp(),
+                subscriptionStatus: 'trialing',
+                plan: 'none',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp(),
+              });
+            } catch (err) {
+              handleFirestoreError(err, OperationType.CREATE, userPath);
+            }
           }
           await fetchStatus(user.uid);
         } catch (err) {
@@ -92,6 +112,11 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 
   return (
     <AuthContext.Provider value={{ user, status, loading, refreshStatus: () => user ? fetchStatus(user.uid) : Promise.resolve() }}>
+      {dbError && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-red-600 text-white p-4 text-center font-black text-xs uppercase tracking-[0.2em] shadow-2xl animate-bounce">
+          {dbError}
+        </div>
+      )}
       {children}
     </AuthContext.Provider>
   );

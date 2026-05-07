@@ -4,30 +4,50 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Stripe from "stripe";
 import admin from "firebase-admin";
+import { getFirestore } from "firebase-admin/firestore";
 import cors from "cors";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Initialize Firebase Admin
+import firebaseConfig from "./firebase-applet-config.json";
+
+let adminApp: admin.app.App;
+
+console.log("Initializing Firebase Admin for project:", firebaseConfig.projectId);
+console.log("Using custom databaseId:", firebaseConfig.firestoreDatabaseId);
+
 if (!admin.apps.length) {
   const serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccount) {
     try {
-      admin.initializeApp({
+      console.log("Using FIREBASE_SERVICE_ACCOUNT from environment.");
+      adminApp = admin.initializeApp({
         credential: admin.credential.cert(JSON.parse(serviceAccount)),
+        projectId: firebaseConfig.projectId
       });
     } catch (e) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to default.", e);
-      admin.initializeApp();
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to project ID.", e);
+      adminApp = admin.initializeApp({
+        projectId: firebaseConfig.projectId,
+      });
     }
   } else {
-    // In Google Cloud Run, it will use the service account automatically.
-    admin.initializeApp();
+    console.log("No service account found, using projectId from config.");
+    // Force the project ID into the environment to ensure getFirestore picks it up
+    process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
+    adminApp = admin.initializeApp({
+      projectId: firebaseConfig.projectId,
+    });
   }
+} else {
+  adminApp = admin.app();
 }
 
-const db = admin.firestore();
+console.log("Final Admin Configuration - Project:", adminApp.options.projectId);
+
+const db = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
 
 // Initialize Stripe Lazily
 let stripe: Stripe | null = null;

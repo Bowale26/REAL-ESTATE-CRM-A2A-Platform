@@ -1,6 +1,6 @@
 {
   "name": "A2A Intelligence CRM",
   "description": "A high-performance neural CRM with AI-driven intelligence, Stripe-integrated paywalls, and 7-day automated trials.",
-  "requestFramePermissions": [],
+  "requestFramePermissions": ["camera", "microphone", "geolocation"],
   "majorCapabilities": []
 }
