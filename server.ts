@@ -28,26 +28,72 @@ if (!admin.apps.length) {
         projectId: firebaseConfig.projectId
       });
     } catch (e) {
-      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to project ID.", e);
+      console.error("Failed to parse FIREBASE_SERVICE_ACCOUNT, falling back to ADC.", e);
       adminApp = admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
         projectId: firebaseConfig.projectId,
       });
     }
   } else {
-    console.log("No service account found, using projectId from config.");
-    // Force the project ID into the environment to ensure getFirestore picks it up
-    process.env.GOOGLE_CLOUD_PROJECT = firebaseConfig.projectId;
-    adminApp = admin.initializeApp({
-      projectId: firebaseConfig.projectId,
-    });
+    console.log("No service account found, using ADC with projectId:", firebaseConfig.projectId);
+    try {
+      adminApp = admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: firebaseConfig.projectId,
+      });
+    } catch (e) {
+      console.warn("applicationDefault() failed, falling back to minimal config.", e);
+      adminApp = admin.initializeApp({
+        projectId: firebaseConfig.projectId,
+      });
+    }
   }
 } else {
   adminApp = admin.app();
 }
 
 console.log("Final Admin Configuration - Project:", adminApp.options.projectId);
+console.log("Final Admin Configuration - Credential Type:", adminApp.options.credential ? "Present" : "Missing");
 
-const db = getFirestore(adminApp, firebaseConfig.firestoreDatabaseId);
+let db: any;
+async function initializeFirestore() {
+  const databaseId = firebaseConfig.firestoreDatabaseId;
+  const projectId = firebaseConfig.projectId;
+  
+  console.log(`Initializing Cloud Firestore - Project: ${projectId}, DB: ${databaseId || "(default)"}`);
+  
+  try {
+    // Explicitly pass project and database IDs to avoid environment ambiguity
+    const firestoreSettings: any = {
+      projectId: projectId,
+    };
+    if (databaseId) {
+      firestoreSettings.databaseId = databaseId;
+    }
+
+    // Try creating the client directly via standard Firebase Admin
+    db = getFirestore(adminApp, databaseId);
+    
+    // Test the connection immediately (async but don't block startServer indefinitely)
+    db.collection("_health_check_").doc("ping").get()
+      .then(() => console.log(`✅ Firestore connected successfully to: ${databaseId || "(default)"}`))
+      .catch((err: any) => {
+        console.warn(`⚠️ Firestore test failed for DB: ${databaseId}. Error: ${err.message}`);
+        if (databaseId) {
+          console.log("Attempting fallback to default database instance...");
+          db = getFirestore(adminApp);
+        }
+      });
+  } catch (err: any) {
+    console.error("❌ CRITICAL Firestore Initialization Error:", err.message);
+    db = getFirestore(adminApp); // Last ditch effort
+  }
+}
+
+// Call initialization
+initializeFirestore();
+
+console.log("Firestore initialization scheduled.");
 
 // Initialize Stripe Lazily
 let stripe: Stripe | null = null;
@@ -62,9 +108,33 @@ function getStripe() {
   return stripe;
 }
 
+// Unified helper to get user data with failover
+async function getUserDoc(userId: string) {
+  if (!db) throw new Error("Database not initialized");
+  
+  try {
+    return await db.collection("users").doc(userId).get();
+  } catch (err: any) {
+    console.error(`❌ Firestore get failed for user ${userId}: ${err.message}`);
+    
+    // If it's a permission/connectivity issue, try falling back to default DB once
+    if (err.code === 7 || err.message.includes("permission") || err.message.includes("database")) {
+      console.log("🔄 Attempting failover to default Firestore database...");
+      try {
+        const fallbackDb = getFirestore(adminApp);
+        return await fallbackDb.collection("users").doc(userId).get();
+      } catch (fallbackErr: any) {
+        console.error("❌ Failover also failed:", fallbackErr.message);
+        throw fallbackErr;
+      }
+    }
+    throw err;
+  }
+}
+
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = process.env.PORT || 3000;
 
   // Stripe Webhook needs raw body
   app.post("/api/webhooks/stripe", express.raw({ type: "application/json" }), async (req, res) => {
@@ -96,7 +166,8 @@ async function startServer() {
         if (userId && subscriptionId) {
           const subscription = await getStripe().subscriptions.retrieve(subscriptionId);
           const priceId = subscription.items.data[0].price.id;
-          const plan = priceId === process.env.VITE_STRIPE_YEARLY_PRICE_ID ? 'yearly' : 'monthly';
+          const yearlyPriceId = process.env.PRICE_YEARLY || process.env.VITE_STRIPE_YEARLY_PRICE_ID;
+          const plan = priceId === yearlyPriceId ? 'yearly' : 'monthly';
 
           await db.collection("users").doc(userId).set({
             subscriptionStatus: "active",
@@ -121,7 +192,8 @@ async function startServer() {
         if (!userSnapshot.empty) {
           const userId = userSnapshot.docs[0].id;
           const priceId = subscription.items.data[0].price.id;
-          const plan = priceId === process.env.VITE_STRIPE_YEARLY_PRICE_ID ? 'yearly' : 'monthly';
+          const yearlyPriceId = process.env.PRICE_YEARLY || process.env.VITE_STRIPE_YEARLY_PRICE_ID;
+          const plan = priceId === yearlyPriceId ? 'yearly' : 'monthly';
 
           await db.collection("users").doc(userId).update({
             subscriptionStatus: subscription.status,
@@ -175,6 +247,70 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.get("/api/config", (req, res) => {
+    res.json({
+      priceMonthly: process.env.PRICE_MONTHLY || process.env.VITE_STRIPE_MONTHLY_PRICE_ID,
+      priceYearly: process.env.PRICE_YEARLY || process.env.VITE_STRIPE_YEARLY_PRICE_ID,
+      stripePublishableKey: process.env.VITE_STRIPE_PUBLISHABLE_KEY
+    });
+  });
+
+  app.post("/api/init-user", async (req, res) => {
+    const { userId, email, displayName } = req.body;
+    if (!userId) return res.status(400).json({ error: "Missing userId" });
+
+    try {
+      if (!db) {
+        throw new Error("Firestore not initialized");
+      }
+
+      // Use the helper with failover
+      const userRef = db.collection("users").doc(userId);
+      let docSnapshot;
+      try {
+        docSnapshot = await userRef.get();
+      } catch (e: any) {
+        console.log("Initial fetch failed, trying fallback init...");
+        const fallbackDb = getFirestore(adminApp);
+        docSnapshot = await fallbackDb.collection("users").doc(userId).get();
+        db = fallbackDb; // Switch if successful
+      }
+
+      if (!docSnapshot.exists) {
+        const now = new Date();
+        const trialStart = now.getTime(); // Match user's requested 'trialStart' label
+
+        await userRef.set({
+          email: email || "",
+          displayName: displayName || "",
+          trialStart: trialStart, 
+          trialStartDate: now.toISOString(),
+          subscriptionStatus: "trialing",
+          status: "trialing", // User request uses 'status'
+          plan: "none",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        console.log(`🆕 Created CRM profile for user ${userId} with 7-Day Trial`);
+        return res.json({ created: true });
+      }
+      res.json({ created: false, message: "User already exists" });
+    } catch (error: any) {
+      console.error("❌ Error initializing user in CRM:", error.message);
+      
+      // Fallback logic for permission errors
+      if (error.code === 7 || error.message.includes("permission")) {
+         console.error("PERMISSION_DENIED detected. This is a deployment environment issue.");
+      }
+
+      res.status(500).json({ 
+        error: error.message, 
+        code: error.code,
+        details: "Firestore access error. Check IAM roles."
+      });
+    }
+  });
+
   app.post("/api/create-checkout-session", async (req, res) => {
     const { userId, email, priceId } = req.body;
 
@@ -183,6 +319,7 @@ async function startServer() {
     }
 
     try {
+      const origin = process.env.FRONTEND_URL || req.headers.origin;
       const session = await getStripe().checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [
@@ -192,8 +329,8 @@ async function startServer() {
           },
         ],
         mode: "subscription",
-        success_url: `${req.headers.origin}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${req.headers.origin}/billing`,
+        success_url: `${origin}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/billing`,
         customer_email: email,
         client_reference_id: userId,
         subscription_data: {
@@ -217,9 +354,10 @@ async function startServer() {
     }
 
     try {
+      const origin = process.env.FRONTEND_URL || req.headers.origin;
       const session = await getStripe().billingPortal.sessions.create({
         customer: stripeCustomerId,
-        return_url: `${req.headers.origin}/billing`,
+        return_url: `${origin}/billing`,
       });
       res.json({ url: session.url });
     } catch (error: any) {
@@ -227,62 +365,53 @@ async function startServer() {
     }
   });
 
-  // Check detailed subscription status (Trial/Paid)
+  // Check detailed subscription status (7-Day Trial enforcement)
   app.get("/api/subscription-status/:userId", async (req, res) => {
     try {
       const { userId } = req.params;
-      const userDoc = await db.collection("users").doc(userId).get();
+      const userDoc = await getUserDoc(userId);
 
       if (!userDoc.exists) {
-        return res.json({ status: "no_account", access: "blocked", trialDaysLeft: 0 });
+        return res.json({ status: "no_account", access: "blocked", redirect: true, url: "/billing" });
       }
 
       const userData = userDoc.data();
       if (!userData) return res.status(500).json({ error: "Empty user data" });
 
-      const now = new Date();
+      // Enforce 7-Day Trial (Match user's requested logic)
+      const now = Date.now();
+      const trialStart = userData.trialStart || (userData.trialStartDate ? new Date(userData.trialStartDate).getTime() : 0);
+      const trialDuration = 7 * 24 * 60 * 60 * 1000;
+      const trialExpired = trialStart && (now - trialStart) > trialDuration;
+      
+      const isActive = userData.subscriptionStatus === "active" || userData.status === "active";
 
-      // Priority 1: Check active Stripe subscription
-      if (userData.stripeSubscriptionId && userData.subscriptionStatus === "active") {
+      if (trialExpired && !isActive) {
         return res.json({
           ...userData,
-          status: userData.subscriptionStatus,
-          access: "full",
-          label: "Subscribed",
+          status: "trial_expired",
+          access: "blocked",
+          redirect: true,
+          url: "/billing",
+          trialDaysLeft: 0
         });
       }
 
-      // Priority 2: Check trial period (7 days from trialStart)
-      const trialStart = userData.trialStart ? (userData.trialStart.toDate ? userData.trialStart.toDate() : new Date(userData.trialStart)) : null;
-      if (trialStart) {
-        const trialEndsAt = new Date(trialStart);
-        trialEndsAt.setDate(trialEndsAt.getDate() + 7);
-        
-        const diffMs = trialEndsAt.getTime() - now.getTime();
-        const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      // Valid Trial or Active Subscription
+      const daysLeft = trialStart ? Math.ceil((trialStart + trialDuration - now) / (1000 * 60 * 60 * 24)) : 0;
 
-        if (daysLeft > 0) {
-          return res.json({
-            ...userData,
-            status: "trial",
-            access: "full",
-            trialDaysLeft: daysLeft,
-            trialEndDate: trialEndsAt.toISOString(),
-          });
-        }
-      }
-
-      // Trial expired, no active subscription
-      res.json({
+      return res.json({
         ...userData,
-        status: "trial_expired",
-        access: "blocked",
-        trialDaysLeft: 0,
-        redirectTo: "/billing",
+        status: isActive ? "active" : "trial",
+        access: "full",
+        redirect: false,
+        trialDaysLeft: isActive ? 0 : Math.max(0, daysLeft),
       });
+
     } catch (error: any) {
-      console.error("Status check error:", error);
-      res.status(500).json({ error: error.message });
+      console.error("Database connection failed:", error.message);
+      // Fallback: If DB check fails, protect by showing pricing/billing
+      res.json({ redirect: true, url: "/billing", error: error.message });
     }
   });
 
@@ -315,7 +444,7 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  app.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running at http://0.0.0.0:${PORT}`);
   });
 }

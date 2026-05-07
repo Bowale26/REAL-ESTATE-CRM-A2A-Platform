@@ -59,6 +59,33 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     }
   };
 
+  const initializeUserInCRM = async (user: User) => {
+    try {
+      setLoading(true);
+      // Initialize user on the backend to avoid client-side permission issues
+      const initResponse = await fetch('/api/init-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.uid,
+          email: user.email,
+          displayName: user.displayName
+        })
+      });
+
+      if (!initResponse.ok) {
+        const errorData = await initResponse.json();
+        console.error("Status check error handled:", errorData.error);
+      }
+
+      await fetchStatus(user.uid);
+    } catch (err: any) {
+      console.error("Status check error handled:", err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     const runChecks = async () => {
       const isConnected = await checkDbConnection();
@@ -71,40 +98,11 @@ const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setUser(user);
       if (user) {
-        setLoading(true); // Keep loading while we fetch data
-        const userPath = `users/${user.uid}`;
-        try {
-          const userRef = doc(db, 'users', user.uid);
-          let docSnap;
-          try {
-            docSnap = await getDoc(userRef);
-          } catch (err) {
-            handleFirestoreError(err, OperationType.GET, userPath);
-          }
-          
-          if (!docSnap || !docSnap.exists()) {
-            try {
-              await setDoc(userRef, {
-                email: user.email,
-                displayName: user.displayName,
-                trialStart: serverTimestamp(),
-                subscriptionStatus: 'trialing',
-                plan: 'none',
-                createdAt: serverTimestamp(),
-                updatedAt: serverTimestamp(),
-              });
-            } catch (err) {
-              handleFirestoreError(err, OperationType.CREATE, userPath);
-            }
-          }
-          await fetchStatus(user.uid);
-        } catch (err) {
-          console.error("Error setting up user profile:", err);
-        }
+        await initializeUserInCRM(user);
       } else {
         setStatus(null);
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return unsubscribe;

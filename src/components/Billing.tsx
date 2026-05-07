@@ -7,6 +7,15 @@ import { motion } from 'motion/react';
 export const Billing: React.FC = () => {
   const { user, status } = useAuth();
   const [loading, setLoading] = useState(false);
+  const [config, setConfig] = useState<{ priceMonthly?: string, priceYearly?: string }>({});
+
+  React.useEffect(() => {
+    fetch('/api/config')
+      .then(res => res.json())
+      .then(data => setConfig(data))
+      .catch(err => console.error("Error fetching config:", err));
+  }, []);
+
   const PRICING_PLANS = [
     {
       id: 'explorer',
@@ -27,7 +36,7 @@ export const Billing: React.FC = () => {
       description: 'Unlimited lead capture and advanced cinematic AI production.',
       features: ['Everything in Explorer', 'Unlimited Listings', 'Team Collaboration', 'Advanced BI Dashboard', 'Priority Support'],
       cta: 'SUBSCRIBE MONTHLY',
-      priceId: import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID,
+      priceId: config.priceMonthly || import.meta.env.VITE_STRIPE_MONTHLY_PRICE_ID,
       highlighted: true,
     },
     {
@@ -38,7 +47,7 @@ export const Billing: React.FC = () => {
       description: 'Full network access with 2 months free and priority agent processing.',
       features: ['Everything in Professional', 'White-label Options', 'API Access', 'Dedicated Account Manager', 'Custom Integrations'],
       cta: 'SAVE WITH ANNUAL',
-      priceId: import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID,
+      priceId: config.priceYearly || import.meta.env.VITE_STRIPE_YEARLY_PRICE_ID,
       highlighted: false,
     },
   ];
